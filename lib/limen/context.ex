@@ -1,0 +1,126 @@
+defmodule Limen.Context do
+  @moduledoc """
+  Everything Limen knows about a request while it is being evaluated.
+
+  A context is built once per request by `Limen.Plug`, for one
+  `Limen.Instance`, which it carries so that everything downstream reads its
+  configuration and state without looking anything up. Identity fields
+  (`client_ip`, `prefix`, `ja4`, `user_agent`) are always populated; the
+  `signals` map is filled by the `Limen.Signal` modules a policy depends on.
+
+  Every signal value that ends up in a context is copied into the
+  `Limen.Decision` record, so a decision can always be explained from the
+  values that produced it.
+  """
+
+  @type prefix :: Limen.IP.prefix()
+
+  @type t :: %__MODULE__{
+          instance: Limen.Instance.t() | nil,
+          peer_ip: :inet.ip_address() | nil,
+          client_ip: :inet.ip_address() | nil,
+          via_proxy: boolean(),
+          prefix: prefix() | nil,
+          ja4: String.t() | nil,
+          user_agent: String.t() | nil,
+          method: String.t(),
+          scheme: :http | :https,
+          host: String.t(),
+          path: String.t(),
+          query: String.t(),
+          headers: [{String.t(), String.t()}],
+          now: integer(),
+          signals: %{optional(atom()) => term()},
+          evidence: %{optional(atom()) => term()},
+          rates: %{optional(term()) => non_neg_integer()}
+        }
+
+  defstruct instance: nil,
+            peer_ip: nil,
+            client_ip: nil,
+            via_proxy: false,
+            prefix: nil,
+            ja4: nil,
+            user_agent: nil,
+            method: "GET",
+            scheme: :http,
+            host: "",
+            path: "/",
+            query: "",
+            headers: [],
+            now: 0,
+            signals: %{},
+            evidence: %{},
+            rates: %{}
+
+  @doc """
+  Builds a context for `instance` from a `Plug.Conn`, without resolving
+  identity.
+  """
+  @spec from_conn(Plug.Conn.t(), Limen.Instance.t() | nil) :: t()
+  def from_conn(%Plug.Conn{} = conn, instance \\ nil) do
+    %__MODULE__{
+      instance: instance,
+      peer_ip: conn.remote_ip,
+      client_ip: conn.remote_ip,
+      method: conn.method,
+      scheme: conn.scheme,
+      host: conn.host,
+      path: conn.request_path,
+      query: conn.query_string,
+      headers: conn.req_headers,
+      now: System.system_time(:millisecond)
+    }
+  end
+
+  @doc """
+  Returns the first value of the request header `name`, or `nil`.
+
+  `name` must be lowercase, as Plug normalises header names.
+  """
+  @spec header(t(), String.t()) :: String.t() | nil
+  def header(%__MODULE__{headers: headers}, name) do
+    case List.keyfind(headers, name, 0) do
+      {_, value} -> value
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Returns the value of signal `key`, or `nil` when it was not collected.
+  """
+  @spec signal(t(), atom()) :: term()
+  def signal(%__MODULE__{} = ctx, :client_ip), do: ctx.client_ip
+  def signal(%__MODULE__{} = ctx, :prefix), do: ctx.prefix
+  def signal(%__MODULE__{} = ctx, :ja4), do: ctx.ja4
+  def signal(%__MODULE__{} = ctx, :user_agent), do: ctx.user_agent
+  def signal(%__MODULE__{signals: signals}, key), do: Map.get(signals, key)
+
+  @doc """
+  Stores a signal value and, optionally, the evidence that produced it.
+  """
+  @spec put_signal(t(), atom(), term(), term()) :: t()
+  def put_signal(ctx, key, value, evidence \\ nil)
+
+  def put_signal(%__MODULE__{signals: signals} = ctx, key, value, nil) do
+    %{ctx | signals: Map.put(signals, key, value)}
+  end
+
+  def put_signal(%__MODULE__{signals: signals, evidence: evidence} = ctx, key, value, why) do
+    %{ctx | signals: Map.put(signals, key, value), evidence: Map.put(evidence, key, why)}
+  end
+
+  @doc """
+  The identity of the client, as recorded in decisions and bound into tokens.
+  """
+  @spec identity(t()) :: map()
+  def identity(%__MODULE__{} = ctx) do
+    %{
+      client_ip: ctx.client_ip,
+      prefix: ctx.prefix,
+      ja4: ctx.ja4,
+      user_agent: ctx.user_agent,
+      via_proxy: ctx.via_proxy
+    }
+  end
+end

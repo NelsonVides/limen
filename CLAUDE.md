@@ -1,0 +1,6 @@
+- Nothing on the request hot path may call a GenServer or send a message.
+- Every rule and signal must be explainable in the decision record.
+- Dry-run mode must behave identically except for the final action.
+- Benchmarks run in CI; regressions over 10% fail the build.
+- Run `mix format`, `mix credo --strict`, `mix dialyzer`, and `mix test` before declaring
+  a task done.
