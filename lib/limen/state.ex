@@ -16,6 +16,12 @@ defmodule Limen.State do
       per slot for keys that arrive once the slot is full.
     * GCRA (`Limen.State.Gcra`): theoretical arrival times for hard limits.
     * Bans (`Limen.State.BanList`): banned prefixes with their expiry.
+    * Distinct counting: a HyperLogLog of client prefixes per minute epoch,
+      whose estimate a background tick publishes as `active_prefixes/1`, and
+      a rotating Bloom filter of (prefix, path) pairs so each client's
+      distinct paths can be counted in its time window.
+    * Crawler verification (`Limen.Signal.Fcrdns`): a cache of results and a
+      bounded queue of addresses to verify.
 
   ## Memory bounds
 
@@ -38,7 +44,7 @@ defmodule Limen.State do
     exports: [BanList, Gcra, Rotator, Sweeper, Window]
 
   alias Limen.Instance
-  alias Limen.Sketch.CountMin
+  alias Limen.Sketch.{Bloom, CountMin, HyperLogLog, RotatingBloom}
 
   @windows [second: 1_000, minute: 60_000, hour: 3_600_000]
   @slots 3
@@ -49,7 +55,13 @@ defmodule Limen.State do
             window() => %{tables: tuple(), counts: :atomics.atomics_ref(), sketches: tuple()}
           },
           gcra: %{table: :ets.tid(), size: :atomics.atomics_ref()},
-          bans: %{table: :ets.tid(), size: :atomics.atomics_ref()}
+          bans: %{table: :ets.tid(), size: :atomics.atomics_ref()},
+          distinct: %{
+            prefixes: tuple(),
+            paths: RotatingBloom.t(),
+            estimate: :atomics.atomics_ref()
+          },
+          fcrdns: %{cache: :ets.tid(), pending: :ets.tid(), size: :atomics.atomics_ref()}
         }
 
   @doc """
@@ -90,10 +102,22 @@ defmodule Limen.State do
          }}
       end)
 
+    prefixes = for _slot <- 1..@slots, do: HyperLogLog.new(config.hll_precision)
+
     %{
       windows: windows,
       gcra: %{table: new_table(:limen_gcra), size: :atomics.new(1, [])},
-      bans: %{table: new_table(:limen_bans), size: :atomics.new(1, [])}
+      bans: %{table: new_table(:limen_bans), size: :atomics.new(1, [])},
+      distinct: %{
+        prefixes: List.to_tuple(prefixes),
+        paths: RotatingBloom.new(config.path_filter_capacity, 0.02),
+        estimate: :atomics.new(1, [])
+      },
+      fcrdns: %{
+        cache: new_table(:limen_fcrdns_cache),
+        pending: new_table(:limen_fcrdns_pending),
+        size: :atomics.new(1, [])
+      }
     }
   end
 
@@ -104,54 +128,119 @@ defmodule Limen.State do
   end
 
   @doc """
+  Distinct client prefixes `instance` saw over the last one to two minutes,
+  as last estimated in the background.
+  """
+  @spec active_prefixes(Instance.t()) :: non_neg_integer()
+  def active_prefixes(%Instance{state: %{distinct: %{estimate: estimate}}}),
+    do: :atomics.get(estimate, 1)
+
+  @doc """
+  Adds a client prefix to the active prefix count, and returns whether it had
+  not requested `path` recently.
+  """
+  @spec observe_client(Instance.t(), Limen.IP.prefix(), String.t(), integer()) :: boolean()
+  def observe_client(%Instance{state: %{distinct: distinct}}, prefix, path, now) do
+    %{prefixes: prefixes, paths: paths} = distinct
+    HyperLogLog.add(elem(prefixes, rem(div(now, duration(:minute)), @slots)), prefix)
+    RotatingBloom.put_new(paths, {prefix, path})
+  end
+
+  @doc false
+  @spec estimate_active_prefixes(Instance.t(), integer()) :: non_neg_integer()
+  def estimate_active_prefixes(%Instance{state: %{distinct: distinct}}, now) do
+    %{prefixes: prefixes, estimate: estimate} = distinct
+    epoch = div(now, duration(:minute))
+    current = elem(prefixes, rem(epoch, @slots))
+    previous = elem(prefixes, rem(epoch - 1 + @slots, @slots))
+    count = HyperLogLog.cardinality([current, previous])
+    :atomics.put(estimate, 1, count)
+    count
+  end
+
+  @doc false
+  @spec rotate_distinct(Instance.t(), integer()) :: :ok
+  def rotate_distinct(%Instance{state: %{distinct: distinct}}, now) do
+    %{prefixes: prefixes, paths: paths} = distinct
+    HyperLogLog.reset(elem(prefixes, rem(div(now, duration(:minute)) + 1, @slots)))
+    RotatingBloom.rotate(paths)
+  end
+
+  @doc """
   Memory used by an instance's state, in bytes, by table.
   """
   @spec memory(atom() | Instance.t()) :: %{term() => non_neg_integer()}
   def memory(instance) do
     %Instance{state: state} = Instance.fetch!(instance)
-    word = :erlang.system_info(:wordsize)
+    Map.new(windows_memory(state.windows) ++ tables_memory(state) ++ sketches_memory(state))
+  end
 
-    windows =
-      for {window, %{tables: tables}} <- state.windows,
-          {table, slot} <- Enum.with_index(Tuple.to_list(tables)) do
-        {{:window, window, slot}, :ets.info(table, :memory) * word}
-      end
+  defp windows_memory(windows) do
+    for {window, %{tables: tables}} <- windows,
+        {table, slot} <- Enum.with_index(Tuple.to_list(tables)) do
+      {{:window, window, slot}, table_memory(table)}
+    end
+  end
+
+  defp tables_memory(%{gcra: gcra, bans: bans, fcrdns: fcrdns}) do
+    [
+      gcra: table_memory(gcra.table),
+      bans: table_memory(bans.table),
+      fcrdns_cache: table_memory(fcrdns.cache),
+      fcrdns_pending: table_memory(fcrdns.pending)
+    ]
+  end
+
+  defp sketches_memory(%{windows: windows, distinct: distinct}) do
+    %{prefixes: prefixes, paths: %RotatingBloom{generations: {a, b}}} = distinct
 
     sketches =
-      state.windows
+      windows
       |> Enum.flat_map(fn {_window, %{sketches: sketches}} -> Tuple.to_list(sketches) end)
       |> Enum.map(&CountMin.memory/1)
-      |> Enum.sum()
 
-    Map.new(
-      windows ++
-        [
-          gcra: :ets.info(state.gcra.table, :memory) * word,
-          bans: :ets.info(state.bans.table, :memory) * word,
-          sketches: sketches
-        ]
-    )
+    [
+      sketches: Enum.sum(sketches),
+      distinct_prefixes: Enum.sum(Enum.map(Tuple.to_list(prefixes), &HyperLogLog.memory/1)),
+      path_filter: Bloom.memory(a) + Bloom.memory(b)
+    ]
   end
+
+  defp table_memory(table), do: :ets.info(table, :memory) * :erlang.system_info(:wordsize)
 
   @doc """
   Clears every table and counter of an instance. Meant for tests.
   """
   @spec reset(atom() | Instance.t()) :: :ok
   def reset(instance) do
-    %Instance{state: state} = Instance.fetch!(instance)
+    %Instance{state: %{gcra: gcra, bans: bans, fcrdns: fcrdns} = state} =
+      Instance.fetch!(instance)
 
-    for {_window, %{tables: tables, counts: counts, sketches: sketches}} <- state.windows,
-        slot <- 1..@slots do
+    Enum.each(state.windows, fn {_window, slots} -> reset_window(slots) end)
+    reset_tables([gcra.table], gcra.size)
+    reset_tables([bans.table], bans.size)
+    reset_tables([fcrdns.cache, fcrdns.pending], fcrdns.size)
+    reset_distinct(state.distinct)
+  end
+
+  defp reset_window(%{tables: tables, counts: counts, sketches: sketches}) do
+    for slot <- 1..@slots do
       :ets.delete_all_objects(elem(tables, slot - 1))
       :atomics.put(counts, slot, 0)
       CountMin.reset(elem(sketches, slot - 1))
     end
+  end
 
-    for %{table: table, size: size} <- [state.gcra, state.bans] do
-      :ets.delete_all_objects(table)
-      :atomics.put(size, 1, 0)
-    end
+  defp reset_tables(tables, size) do
+    Enum.each(tables, &:ets.delete_all_objects/1)
+    :atomics.put(size, 1, 0)
+  end
 
+  defp reset_distinct(%{prefixes: prefixes, paths: paths, estimate: estimate}) do
+    for sketch <- Tuple.to_list(prefixes), do: HyperLogLog.reset(sketch)
+    RotatingBloom.rotate(paths)
+    RotatingBloom.rotate(paths)
+    :atomics.put(estimate, 1, 0)
     :ok
   end
 

@@ -142,8 +142,17 @@ defmodule Limen.PolicyTest do
     end
 
     test "unknown signal keys" do
+      assert_raise CompileError, ~r/no signal of this policy provides :tor_exit/, fn ->
+        compile("allow :tor, when: signal(:tor_exit) == true")
+      end
+
       assert_raise CompileError, ~r/no signal of this policy provides :fcrdns/, fn ->
-        compile("allow :crawler, when: signal(:fcrdns) == :verified")
+        Code.compile_string("""
+        defmodule Limen.PolicyTest.NoDns do
+          use Limen.Policy, signals: [Limen.Signal.HttpShape]
+          allow :crawler, when: signal(:fcrdns) == :verified
+        end
+        """)
       end
     end
 

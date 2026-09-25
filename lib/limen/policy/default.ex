@@ -3,6 +3,7 @@ defmodule Limen.Policy.Default do
   The policy `Limen.Plug` uses when none is given.
 
   A conservative starting point meant to be run in dry-run mode first: it
+  lets through clients in `list(:allow)` and crawlers verified by DNS,
   challenges clearly automated traffic, denies only extreme scores, and never
   bans. Copy it into your application to tune it.
 
@@ -16,8 +17,11 @@ defmodule Limen.Policy.Default do
 
   limit :flood, key: :prefix, rate: 100, per: :second, burst: 200
 
+  allow :allow_listed, when: signal(:client_ip) in list(:allow)
+  allow :verified_crawler, when: signal(:fcrdns) == :verified
   deny :known_bad_ja4, when: signal(:ja4) in list(:bad_ja4)
 
+  score :spoofed_crawler, 80, when: signal(:fcrdns) == :failed
   score :tool_user_agent, 30, when: signal(:ua_family) == :tool
   score :headless_browser, 40, when: shape_flag(:headless)
   score :no_user_agent, 40, when: shape_flag(:no_user_agent)

@@ -15,7 +15,7 @@ defmodule Limen.Signal.BehaviourTest do
     Behaviour.track(conn, %{ctx | now: @now})
   end
 
-  test "counts a client's requests, pages, assets and 404s", %{instance: instance} do
+  test "counts a client's requests, pages, assets, 404s and new paths", %{instance: instance} do
     page = [{"sec-fetch-dest", "document"}]
 
     track(instance, "/a", page)
@@ -30,7 +30,8 @@ defmodule Limen.Signal.BehaviourTest do
              pages_per_minute: 4,
              assets_per_minute: 1,
              asset_ratio: 0.25,
-             not_found_ratio: 0.2
+             not_found_ratio: 0.2,
+             distinct_paths_per_minute: 4
            } = Behaviour.collect(ctx).signals
 
     # Read back from the table when the request was not tracked.
@@ -45,6 +46,6 @@ defmodule Limen.Signal.BehaviourTest do
     table = State.table(instance, :minute, rem(div(@now, 60_000), 3))
     key = {Behaviour.key({4, 0x7F000001, 32}), div(@now, 60_000)}
 
-    assert [{^key, 2, 1, 1, 1}] = :ets.lookup(table, key)
+    assert [{^key, 2, 1, 1, 1, 2}] = :ets.lookup(table, key)
   end
 end

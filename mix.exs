@@ -114,7 +114,8 @@ defmodule Limen.MixProject do
           Limen.Sketch,
           Limen.Sketch.CountMin,
           Limen.Sketch.Bloom,
-          Limen.Sketch.RotatingBloom
+          Limen.Sketch.RotatingBloom,
+          Limen.Sketch.HyperLogLog
         ],
         Signals: [
           Limen.Signal,
@@ -124,7 +125,11 @@ defmodule Limen.MixProject do
           Limen.Signal.UserAgent,
           Limen.Signal.Behaviour,
           Limen.Signal.Asn,
-          Limen.Signal.Asn.Loader
+          Limen.Signal.Asn.Loader,
+          Limen.Signal.Fcrdns,
+          Limen.Signal.Fcrdns.DNS,
+          Limen.Signal.Fcrdns.InetRes,
+          Limen.Signal.Fcrdns.Resolver
         ],
         Observability: [
           Limen.Telemetry,

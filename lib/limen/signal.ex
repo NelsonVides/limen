@@ -24,6 +24,7 @@ defmodule Limen.Signal do
   | `Limen.Signal.HttpShape` | `:ua_family`, `:ua_version`, `:shape`, `:shape_flags` |
   | `Limen.Signal.Behaviour` | `:requests_per_minute`, `:not_found_ratio`, `:asset_ratio`, ... |
   | `Limen.Signal.Asn` | `:asn`, `:asn_kind`, `:asn_country`, `:asn_name` |
+  | `Limen.Signal.Fcrdns` | `:fcrdns` |
 
   ## Writing a signal
 
@@ -46,11 +47,32 @@ defmodule Limen.Signal do
 
   use Boundary,
     type: :strict,
-    deps: [Limen.Config, Limen.Context, Limen.Instance, Limen.IP, Limen.State, Plug, Logger],
-    exports: [Asn, Asn.Loader, Behaviour, ClientIP, HttpShape, JA4, UserAgent]
+    deps: [
+      Limen.Config,
+      Limen.Context,
+      Limen.Instance,
+      Limen.IP,
+      Limen.State,
+      Limen.Telemetry,
+      Plug,
+      Logger
+    ],
+    exports: [
+      Asn,
+      Asn.Loader,
+      Behaviour,
+      ClientIP,
+      Fcrdns,
+      Fcrdns.DNS,
+      Fcrdns.InetRes,
+      Fcrdns.Resolver,
+      HttpShape,
+      JA4,
+      UserAgent
+    ]
 
   alias Limen.Context
-  alias Limen.Signal.{Asn, Behaviour, ClientIP, HttpShape, JA4}
+  alias Limen.Signal.{Asn, Behaviour, ClientIP, Fcrdns, HttpShape, JA4}
 
   @doc """
   The names of the values this signal stores.
@@ -66,7 +88,7 @@ defmodule Limen.Signal do
   The built-in signals collected by default.
   """
   @spec defaults() :: [module()]
-  def defaults, do: [HttpShape, Behaviour, Asn]
+  def defaults, do: [HttpShape, Fcrdns, Behaviour, Asn]
 
   @doc """
   Resolves the client identity: address, prefix, JA4 and user agent.

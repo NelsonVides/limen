@@ -6,6 +6,10 @@ defmodule Limen.State.Rotator do
   For each window, a timer fires just after every epoch starts and clears the
   slot the *next* epoch will use (see `Limen.State.Window.rotate/3`). A whole
   slot is dropped at once, so no per-entry expiry scan ever runs.
+
+  Every minute it also starts new distinct-counting generations, and every
+  second it publishes a fresh estimate of active client prefixes, so the
+  request path never has to scan a HyperLogLog.
   """
 
   use GenServer
@@ -40,6 +44,7 @@ defmodule Limen.State.Rotator do
     instance = Instance.fetch!(name)
     cleared = Window.rotate(instance, window, now)
     epoch = div(now, State.duration(window))
+    :ok = distinct(instance, window, now)
 
     Limen.Telemetry.execute(name, [:state, :rotated], %{cleared: cleared}, %{
       window: window,
@@ -49,6 +54,14 @@ defmodule Limen.State.Rotator do
     schedule(window, now)
     {:noreply, name}
   end
+
+  defp distinct(instance, :second, now) do
+    _estimate = State.estimate_active_prefixes(instance, now)
+    :ok
+  end
+
+  defp distinct(instance, :minute, now), do: State.rotate_distinct(instance, now)
+  defp distinct(_instance, :hour, _now), do: :ok
 
   defp schedule(window, now) do
     duration = State.duration(window)

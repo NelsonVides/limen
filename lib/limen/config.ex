@@ -60,6 +60,21 @@ defmodule Limen.Config do
       * `:hosting` - additional ASNs classified as hosting providers, on top
         of the built-in list.
 
+    * `:fcrdns` - crawler verification, see `Limen.Signal.Fcrdns`:
+      * `:crawlers` - map of crawler names (as classified by
+        `Limen.Signal.UserAgent`) to the DNS suffixes their hosts must have,
+        merged over the built-in map.
+      * `:dns` - module implementing `Limen.Signal.Fcrdns.DNS`. Defaults to
+        `Limen.Signal.Fcrdns.InetRes`.
+      * `:verified_ttl`, `:failed_ttl`, `:error_ttl` - seconds results are
+        cached. Default to `86_400`, `3_600` and `60`.
+      * `:max_pending` - addresses waiting for verification. Defaults to
+        `1_000`; beyond that, claims stay unverified until the queue drains.
+      * `:max_cache` - cached results. Defaults to `100_000`.
+      * `:interval` - milliseconds between resolver runs. Defaults to `50`.
+      * `:concurrency` and `:timeout` - lookups in flight and milliseconds
+        each may take. Default to `16` and `2_000`.
+
     * `:shape` - HTTP shape analysis, see `Limen.Signal.HttpShape`:
       * `:ignore_headers` - headers left out of the header-order shape, such
         as those added by your proxies. Forwarding headers and the JA4 header
@@ -97,6 +112,11 @@ defmodule Limen.Config do
       * `:max_bans` - concurrent bans. Defaults to `100_000`.
       * `:sweep_interval` - milliseconds between sweeps of expired bans and
         idle limits. Defaults to `5_000`.
+      * `:path_filter_capacity` - (prefix, path) pairs remembered per minute
+        to count distinct paths per client. Defaults to `1_000_000` (about
+        1 MiB per generation).
+      * `:hll_precision` - precision of the HyperLogLog counting distinct
+        client prefixes. Defaults to `12` (4 KiB, 1.6% error).
 
       Sketch dimensions are read once at startup.
   """
@@ -119,10 +139,35 @@ defmodule Limen.Config do
     sketch_depth: 4,
     gcra_max_keys: 100_000,
     max_bans: 100_000,
-    sweep_interval: 5_000
+    sweep_interval: 5_000,
+    path_filter_capacity: 1_000_000,
+    hll_precision: 12
   }
 
   @asn_defaults %{file: nil, hosting: []}
+
+  @fcrdns_crawlers %{
+    "googlebot" => ["googlebot.com", "google.com"],
+    "bingbot" => ["search.msn.com"],
+    "applebot" => ["applebot.apple.com"],
+    "yandexbot" => ["yandex.ru", "yandex.net", "yandex.com"],
+    "baiduspider" => ["baidu.com", "baidu.jp"],
+    "slurp" => ["crawl.yahoo.net"],
+    "amazonbot" => ["crawl.amazonbot.amazon"]
+  }
+
+  @fcrdns_defaults %{
+    crawlers: @fcrdns_crawlers,
+    dns: Limen.Signal.Fcrdns.InetRes,
+    verified_ttl: 86_400,
+    failed_ttl: 3_600,
+    error_ttl: 60,
+    max_pending: 1_000,
+    max_cache: 100_000,
+    interval: 50,
+    concurrency: 16,
+    timeout: 2_000
+  }
   @shape_defaults %{ignore_headers: %{}}
 
   @tarpit_defaults %{max_concurrent: 1_000, max_delay: 30_000}
@@ -145,6 +190,7 @@ defmodule Limen.Config do
     client_ip_header: nil,
     ja4_header: "x-ja4",
     asn: @asn_defaults,
+    fcrdns: @fcrdns_defaults,
     shape: @shape_defaults,
     tarpit: @tarpit_defaults,
     lists: [],
@@ -246,6 +292,13 @@ defmodule Limen.Config do
     end)
   end
 
+  defp validate(:fcrdns, opts, _config) when is_list(opts) do
+    with {:ok, fcrdns} <- merge_known(@fcrdns_defaults, opts, &valid_fcrdns?/2) do
+      crawlers = Map.merge(@fcrdns_crawlers, Map.new(fcrdns.crawlers, fn {k, v} -> {k, v} end))
+      {:ok, %{fcrdns | crawlers: crawlers}}
+    end
+  end
+
   defp validate(:shape, opts, _config) when is_list(opts) do
     valid? = fn :ignore_headers, headers ->
       is_list(headers) and Enum.all?(headers, &is_binary/1)
@@ -311,6 +364,16 @@ defmodule Limen.Config do
     do: {:error, "invalid value #{inspect(value)}"}
 
   defp validate(key, _value, _config), do: {:error, "unknown option #{inspect(key)}"}
+
+  defp valid_fcrdns?(:crawlers, crawlers) do
+    is_map(crawlers) and
+      Enum.all?(crawlers, fn {name, suffixes} ->
+        is_binary(name) and is_list(suffixes) and Enum.all?(suffixes, &is_binary/1)
+      end)
+  end
+
+  defp valid_fcrdns?(:dns, module), do: is_atom(module)
+  defp valid_fcrdns?(_key, value), do: is_integer(value) and value > 0
 
   defp valid_challenge?(:path, "/" <> _rest = path), do: not String.ends_with?(path, "/")
   defp valid_challenge?(:cookie, name), do: is_binary(name) and name =~ ~r/^[A-Za-z0-9_-]+$/

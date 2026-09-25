@@ -58,6 +58,8 @@ defmodule Limen.DryRunTest do
     {decisions, bans}
   end
 
+  # A background process refreshes the active prefix estimate every second,
+  # so it may change between the two runs.
   defp comparable(decision) do
     %{
       decision
@@ -65,7 +67,8 @@ defmodule Limen.DryRunTest do
         enforced: nil,
         duration: nil,
         at: nil,
-        matches: strip(decision.matches)
+        matches: strip(decision.matches),
+        signals: Map.delete(decision.signals, :active_prefixes)
     }
   end
 

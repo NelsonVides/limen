@@ -28,7 +28,8 @@
                  "lib/limen/state/rotator.ex",
                  "lib/limen/state/sweeper.ex",
                  "lib/limen/signal/asn/loader.ex",
-                 "lib/limen/challenge/replay/rotator.ex"
+                 "lib/limen/challenge/replay/rotator.ex",
+                 "lib/limen/signal/fcrdns/resolver.ex"
                ]
              }
            ]},

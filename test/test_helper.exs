@@ -2,4 +2,4 @@
 # check logging want to see that.
 Logger.configure(level: :warning)
 
-ExUnit.start(exclude: [:node, :distributed, :browser])
+ExUnit.start(exclude: [:node, :distributed, :browser, :flood])

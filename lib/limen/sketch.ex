@@ -13,7 +13,11 @@ defmodule Limen.Sketch do
     * `Limen.Sketch.CountMin` - frequency estimates that never undercount.
     * `Limen.Sketch.Bloom` - set membership with no false negatives.
     * `Limen.Sketch.RotatingBloom` - "seen recently", in two generations.
+    * `Limen.Sketch.HyperLogLog` - distinct counts in a few kilobytes.
+
+  Limen ships these minimal implementations rather than depending on a
+  sketch library, so it has no dependencies beyond Plug and Telemetry.
   """
 
-  use Boundary, type: :strict, deps: [], exports: [Bloom, CountMin, RotatingBloom]
+  use Boundary, type: :strict, deps: [], exports: [Bloom, CountMin, HyperLogLog, RotatingBloom]
 end

@@ -25,6 +25,7 @@ defmodule Limen.Supervisor do
       {Limen.State.Rotator, name},
       {Limen.State.Sweeper, name},
       {Limen.Signal.Asn.Loader, name},
+      {Limen.Signal.Fcrdns.Resolver, name},
       {Limen.Challenge.Replay.Rotator, name}
     ]
 

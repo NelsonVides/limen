@@ -55,6 +55,12 @@ jobs:
       - run: mix credo --strict
         if: matrix.lint
       - run: mix test --warnings-as-errors
+      # The vendored solver, run under Node.js as a browser would run it.
+      - run: mix test --only node
+        if: matrix.lint
+      # A flood of 10^6 unique IPv6 /64s must stay within the memory cap.
+      - run: mix test --only flood
+        if: matrix.lint
 
   dialyzer:
     name: Dialyzer
