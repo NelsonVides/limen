@@ -95,6 +95,15 @@ defmodule Limen.Config do
       * `:replay_capacity` - solved challenges remembered per `:ttl` to
         reject replays. Defaults to `100_000`.
 
+    * `:cluster` - ban propagation across nodes, see `Limen.Cluster`:
+      * `:enabled` - `false` (default) or `true`. Read at startup.
+      * `:scope` - the `:pg` scope the instance starts and uses, which must
+        be unique among the instances of a node. Defaults to one named after
+        the instance, so instances of the same name on different nodes share
+        their bans.
+      * `:interval` - milliseconds between broadcasts. Defaults to `100`.
+      * `:max_outbox` - bans waiting to be broadcast. Defaults to `10_000`.
+
     * `:tarpit` - limits on tarpitted requests, see `Limen.Tarpit`:
       * `:max_concurrent` - requests held at once. Defaults to `1_000`.
       * `:max_delay` - longest delay in milliseconds. Defaults to `30_000`.
@@ -171,6 +180,7 @@ defmodule Limen.Config do
   @shape_defaults %{ignore_headers: %{}}
 
   @tarpit_defaults %{max_concurrent: 1_000, max_delay: 30_000}
+  @cluster_defaults %{enabled: false, scope: nil, interval: 100, max_outbox: 10_000}
 
   @challenge_defaults %{
     path: "/__limen",
@@ -194,6 +204,7 @@ defmodule Limen.Config do
     shape: @shape_defaults,
     tarpit: @tarpit_defaults,
     lists: [],
+    cluster: @cluster_defaults,
     ipv4_prefix: 32,
     ipv6_prefix: 64,
     decision_log: @decision_log_defaults,
@@ -326,6 +337,14 @@ defmodule Limen.Config do
     with {:ok, challenge} <- merge_known(@challenge_defaults, opts, &valid_challenge?/2) do
       {:ok, Map.put(challenge, :segments, String.split(challenge.path, "/", trim: true))}
     end
+  end
+
+  defp validate(:cluster, opts, _config) when is_list(opts) do
+    merge_known(@cluster_defaults, opts, fn
+      :enabled, enabled -> is_boolean(enabled)
+      :scope, scope -> is_atom(scope)
+      _limit, value -> is_integer(value) and value > 0
+    end)
   end
 
   defp validate(:tarpit, opts, _config) when is_list(opts) do

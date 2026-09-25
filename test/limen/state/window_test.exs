@@ -139,4 +139,21 @@ defmodule Limen.State.WindowTest do
              {{:test, :a}, 3}
            ]
   end
+
+  test "top ranks rows by one of their counts", %{instance: instance} do
+    for {key, row} <- [a: {3, 1}, b: {1, 5}, c: {2, 2}] do
+      Window.add(instance, :minute, {:test, key}, row, @t0)
+    end
+
+    for _event <- 1..4, do: Window.incr(instance, :minute, {:test, :d}, @t0)
+    test? = &match?({:test, _key}, &1)
+
+    assert Window.top(instance, :minute, test?, 3, @t0) == [
+             {{:test, :d}, 4},
+             {{:test, :a}, 3},
+             {{:test, :c}, 2}
+           ]
+
+    assert Window.top(instance, :minute, test?, 1, @t0, 2) == [{{:test, :b}, 5}]
+  end
 end

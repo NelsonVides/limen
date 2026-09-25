@@ -56,7 +56,7 @@ defmodule Limen.State.BanListTest do
     assert BanList.ban(instance, {4, 3, 32}, 60) == :ok
   end
 
-  describe "Limen.ban/3" do
+  describe "Limen.ban/4" do
     test "aggregates addresses to their prefix", %{instance: instance} do
       assert Limen.ban(instance, "192.0.2.1", 60) == :ok
       assert Limen.banned(instance, {192, 0, 2, 1})

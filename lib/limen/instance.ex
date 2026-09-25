@@ -56,6 +56,24 @@ defmodule Limen.Instance do
   def get(name) when is_atom(name), do: :persistent_term.get({Limen, name}, nil)
 
   @doc """
+  The instance name given by an `:instance` or an `:otp_app` option, as
+  `Limen.Plug` and the socket checks take it.
+  """
+  @spec name!(keyword()) :: atom()
+  def name!(opts) do
+    case {Keyword.get(opts, :instance), Keyword.get(opts, :otp_app)} do
+      {name, nil} when is_atom(name) and name != nil ->
+        name
+
+      {nil, app} when is_atom(app) and app != nil ->
+        app
+
+      _missing_or_both ->
+        raise ArgumentError, "expected either an :instance or an :otp_app option"
+    end
+  end
+
+  @doc """
   Validates and replaces one configuration option of a running instance.
   """
   @spec put_config(atom(), atom(), term()) :: :ok

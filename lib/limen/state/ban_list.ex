@@ -12,6 +12,10 @@ defmodule Limen.State.BanList do
   state it leaves behind.
 
   The list holds at most `:max_bans` entries; further bans are refused.
+
+  When clustering is enabled (see `Limen.Cluster`), bans and unbans made on
+  this node are also queued for broadcast; bans received from other nodes
+  are not broadcast again.
   """
 
   alias Limen.Instance
@@ -45,7 +49,7 @@ defmodule Limen.State.BanList do
 
     cond do
       :ets.member(table, prefix) ->
-        extend(table, entry)
+        extend(instance, table, entry)
 
       :atomics.get(size, 1) >= instance.config.state.max_bans ->
         Limen.Stats.incr(instance, :saturated)
@@ -53,10 +57,11 @@ defmodule Limen.State.BanList do
 
       :ets.insert_new(table, entry) ->
         :atomics.add(size, 1, 1)
+        publish(instance, {:ban, entry}, elem(entry, 4))
         added(instance, entry, ttl)
 
       true ->
-        extend(table, entry)
+        extend(instance, table, entry)
     end
   end
 
@@ -68,7 +73,9 @@ defmodule Limen.State.BanList do
      Keyword.get(opts, :origin, :admin)}
   end
 
-  defp extend(table, {prefix, expires_at, reason, mode, origin} = entry) do
+  defp extend(instance, table, {prefix, expires_at, reason, mode, origin} = entry) do
+    publish(instance, {:ban, entry}, origin)
+
     case :ets.lookup(table, prefix) do
       [{^prefix, current_expiry, _reason, current_mode, _origin}]
       when current_expiry >= expires_at and (current_mode == :enforce or mode == :dry_run) ->
@@ -116,11 +123,53 @@ defmodule Limen.State.BanList do
   @doc """
   Lifts the ban on `prefix`.
   """
-  @spec unban(Instance.t(), Limen.IP.prefix()) :: :ok
-  def unban(%Instance{state: %{bans: %{table: table, size: size}}}, prefix) do
+  @spec unban(Instance.t(), Limen.IP.prefix(), keyword()) :: :ok
+  def unban(%Instance{state: %{bans: %{table: table, size: size}}} = instance, prefix, opts \\ []) do
     if :ets.take(table, prefix) != [], do: :atomics.sub(size, 1, 1)
-    :ok
+    publish(instance, {:unban, prefix}, Keyword.get(opts, :origin, :admin))
   end
+
+  # Queues a local change for broadcast when clustering is enabled.
+  defp publish(_instance, _change, :remote), do: :ok
+  defp publish(%Instance{config: %{cluster: %{enabled: false}}}, _change, _origin), do: :ok
+
+  defp publish(%Instance{config: config, state: %{bans: bans}}, change, _origin) do
+    %{outbox: outbox, outbox_size: size} = bans
+
+    if :atomics.add_get(size, 1, 1) <= config.cluster.max_outbox do
+      true = :ets.insert(outbox, {:erlang.unique_integer([:monotonic]), change})
+      :ok
+    else
+      :atomics.sub(size, 1, 1)
+    end
+  end
+
+  @doc false
+  @spec drain_outbox(Instance.t()) :: [{:ban, tuple()} | {:unban, Limen.IP.prefix()}]
+  def drain_outbox(%Instance{state: %{bans: %{outbox: outbox, outbox_size: size}}}) do
+    entries = :ets.tab2list(outbox)
+    Enum.each(entries, fn {id, _change} -> :ets.delete(outbox, id) end)
+    :atomics.sub(size, 1, length(entries))
+    for {_id, change} <- Enum.sort(entries), do: change
+  end
+
+  @doc false
+  @spec apply_remote(Instance.t(), {:ban, tuple()} | {:unban, Limen.IP.prefix()}, integer()) ::
+          :ok
+  def apply_remote(instance, {:ban, {prefix, expires_at, reason, mode, _origin}}, now) do
+    case div(expires_at - now + 999, 1_000) do
+      ttl when ttl > 0 ->
+        _result =
+          ban(instance, prefix, ttl, reason: reason, mode: mode, origin: :remote, now: now)
+
+        :ok
+
+      _expired ->
+        :ok
+    end
+  end
+
+  def apply_remote(instance, {:unban, prefix}, _now), do: unban(instance, prefix, origin: :remote)
 
   @doc """
   Lists active bans, soonest to expire first.

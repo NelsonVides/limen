@@ -91,19 +91,30 @@ defmodule Limen.State.Window do
   @doc """
   Returns the exact counts of the current epoch, largest first.
 
+  Keys for which `filter` returns `true` are ranked by their count, and rows
+  by their count in `column`, from 1.
+
   Scans the slot, so it is meant for dashboards, not for the request path.
   Keys counted in the sketch are not included.
   """
-  @spec top(Instance.t(), window(), (term() -> boolean()), pos_integer(), integer()) :: [
-          {term(), pos_integer()}
-        ]
-  def top(%Instance{} = instance, window, filter, limit, now) do
+  @spec top(
+          Instance.t(),
+          window(),
+          (term() -> boolean()),
+          pos_integer(),
+          integer(),
+          pos_integer()
+        ) ::
+          [{term(), non_neg_integer()}]
+  def top(%Instance{} = instance, window, filter, limit, now, column \\ 1) do
     epoch = div(now, State.duration(window))
     %{tables: tables} = slots(instance, window)
+    entry = {:element, 1, :"$1"}
+    guards = [{:==, {:element, 2, entry}, epoch}, {:>, {:tuple_size, :"$1"}, column}]
 
     tables
     |> elem(rem(epoch, State.slots()))
-    |> :ets.select([{{{:"$1", epoch}, :"$2"}, [], [{{:"$1", :"$2"}}]}])
+    |> :ets.select([{:"$1", guards, [{{{:element, 1, entry}, {:element, column + 1, :"$1"}}}]}])
     |> Enum.filter(fn {key, _count} -> filter.(key) end)
     |> Enum.sort_by(fn {_key, count} -> count end, :desc)
     |> Enum.take(limit)

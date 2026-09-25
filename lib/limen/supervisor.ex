@@ -19,15 +19,19 @@ defmodule Limen.Supervisor do
 
   @impl true
   def init({name, config}) do
-    children = [
-      {Limen.Owner, {name, config, self()}},
-      {Limen.DecisionLog.Flusher, name},
-      {Limen.State.Rotator, name},
-      {Limen.State.Sweeper, name},
-      {Limen.Signal.Asn.Loader, name},
-      {Limen.Signal.Fcrdns.Resolver, name},
-      {Limen.Challenge.Replay.Rotator, name}
-    ]
+    children =
+      [
+        {Limen.Owner, {name, config, self()}},
+        {Limen.DecisionLog.Flusher, name}
+      ] ++
+        Limen.Cluster.child_specs(name, config) ++
+        [
+          {Limen.State.Rotator, name},
+          {Limen.State.Sweeper, name},
+          {Limen.Signal.Asn.Loader, name},
+          {Limen.Signal.Fcrdns.Resolver, name},
+          {Limen.Challenge.Replay.Rotator, name}
+        ]
 
     Supervisor.init(children, strategy: :rest_for_one)
   end

@@ -61,6 +61,9 @@ jobs:
       # A flood of 10^6 unique IPv6 /64s must stay within the memory cap.
       - run: mix test --only flood
         if: matrix.lint
+      # Bans propagate between two nodes.
+      - run: mix test --only distributed
+        if: matrix.lint
 
   dialyzer:
     name: Dialyzer

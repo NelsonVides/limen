@@ -43,32 +43,40 @@ defmodule Limen do
   Start with `Limen.Plug` and the options in `Limen.Config`.
   """
 
+  # Limen.Dashboard and Limen.LiveView only exist when the application has
+  # their optional dependencies.
   use Boundary,
     deps: [EEx, Logger, Plug, Plug.Crypto],
-    exports: [
-      Config,
-      Context,
-      Decision,
-      Decision.Match,
-      DecisionLog,
-      DecisionLog.Flusher,
-      Instance,
-      IP,
-      Challenge,
-      {Challenge, []},
-      Lists,
-      Plug,
-      State,
-      {State, []},
-      Policy,
-      {Policy, []},
-      Signal,
-      {Signal, []},
-      Stats,
-      Supervisor,
-      Tarpit,
-      Telemetry
-    ]
+    exports:
+      [
+        Config,
+        Context,
+        Decision,
+        Decision.Match,
+        DecisionLog,
+        DecisionLog.Flusher,
+        Instance,
+        IP,
+        Challenge,
+        {Challenge, []},
+        Cluster,
+        Dashboard.Data,
+        Lists,
+        Plug,
+        State,
+        {State, []},
+        Policy,
+        {Policy, []},
+        Signal,
+        {Signal, []},
+        Socket,
+        Stats,
+        Supervisor,
+        Tarpit,
+        Telemetry
+      ] ++
+        if(Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder), do: [Dashboard], else: []) ++
+        if(Code.ensure_loaded?(Phoenix.LiveView), do: [LiveView], else: [])
 
   alias Limen.{Instance, IP}
   alias Limen.State.BanList

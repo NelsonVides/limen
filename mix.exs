@@ -41,9 +41,12 @@ defmodule Limen.MixProject do
     [
       {:plug, "~> 1.16"},
       {:boundary, "~> 0.11", runtime: false},
+      {:phoenix_live_view, "~> 1.0", optional: true},
+      {:phoenix_live_dashboard, "~> 0.8", optional: true},
       {:telemetry, "~> 1.2"},
       {:stream_data, "~> 1.1", only: [:dev, :test]},
       {:bandit, "~> 1.6", only: :test},
+      {:lazy_html, ">= 0.1.0", only: :test},
       {:benchee, "~> 1.3", only: [:dev, :bench]},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
@@ -85,7 +88,16 @@ defmodule Limen.MixProject do
       source_ref: "v#{@version}",
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       groups_for_modules: [
-        Gate: [Limen, Limen.Plug, Limen.Context, Limen.Decision, Limen.Decision.Match],
+        Gate: [
+          Limen,
+          Limen.Plug,
+          Limen.Socket,
+          Limen.LiveView,
+          Limen.Context,
+          Limen.Decision,
+          Limen.Decision.Match
+        ],
+        Cluster: [Limen.Cluster],
         Configuration: [Limen.Config, Limen.Config.Keys, Limen.Lists],
         Challenge: [
           Limen.Challenge,
@@ -132,6 +144,8 @@ defmodule Limen.MixProject do
           Limen.Signal.Fcrdns.Resolver
         ],
         Observability: [
+          Limen.Dashboard,
+          Limen.Dashboard.Data,
           Limen.Telemetry,
           Limen.DecisionLog,
           Limen.DecisionLog.Flusher,

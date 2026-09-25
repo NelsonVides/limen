@@ -74,7 +74,7 @@ defmodule Limen.Plug do
 
   @behaviour Plug
 
-  alias Limen.{Challenge, Context, Decision, Instance, Policy, Signal}
+  alias Limen.{Challenge, Context, Decision, Gate, Instance, Policy, Signal}
   alias Limen.Challenge.{Assets, Page, Pass, Replay, Token}
   alias Limen.Decision.Match
   alias Limen.Policy.Runtime
@@ -83,7 +83,7 @@ defmodule Limen.Plug do
 
   @impl true
   def init(opts) do
-    instance = instance!(opts)
+    instance = Instance.name!(opts)
     policy = Keyword.get(opts, :policy, Limen.Policy.Default)
     mode = Keyword.get(opts, :mode)
     validate_policy!(policy)
@@ -99,21 +99,6 @@ defmodule Limen.Plug do
 
     instances = Enum.uniq(for {_segments, _path, {_policy, _mode, name}} <- routes, do: name)
     %{routes: routes, instance: instance, instances: instances}
-  end
-
-  @doc false
-  @spec instance!(keyword()) :: atom()
-  def instance!(opts) do
-    case {Keyword.get(opts, :instance), Keyword.get(opts, :otp_app)} do
-      {name, nil} when is_atom(name) and name != nil ->
-        name
-
-      {nil, app} when is_atom(app) and app != nil ->
-        app
-
-      _missing_or_both ->
-        raise ArgumentError, "expected either an :instance or an :otp_app option"
-    end
   end
 
   defp route({path, target}, _instance) when target in [:off, :track],
@@ -184,7 +169,7 @@ defmodule Limen.Plug do
 
       {decision, ctx} ->
         %{decision | route: route}
-        |> finalize(ctx, started)
+        |> Gate.finalize(ctx, started)
         |> act(conn, ctx)
     end
   end
@@ -197,7 +182,7 @@ defmodule Limen.Plug do
   defp evaluate(:track, ctx, config) do
     case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
       nil -> :continue
-      ban -> {banned(ban, config.mode), ctx}
+      ban -> {Gate.banned(ban, config.mode), ctx}
     end
   end
 
@@ -206,7 +191,7 @@ defmodule Limen.Plug do
 
     case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
       nil -> run_policy(policy, Runtime.track(policy, ctx), mode)
-      ban -> {%{banned(ban, mode) | policy: policy}, ctx}
+      ban -> {%{Gate.banned(ban, mode) | policy: policy}, ctx}
     end
   end
 
@@ -269,38 +254,6 @@ defmodule Limen.Plug do
     {decision, ctx}
   end
 
-  # A ban created in dry-run mode is reported but never enforced.
-  defp banned(ban, mode) do
-    match = %Match{
-      name: :banned,
-      kind: :ban,
-      condition: "prefix is banned",
-      observed: [{"reason", ban.reason}, {"origin", ban.origin}, {"expires_at", ban.expires_at}]
-    }
-
-    %Decision{
-      action: :deny,
-      stage: :ban,
-      mode: if(mode == :enforce and ban.mode == :enforce, do: :enforce, else: :dry_run),
-      matches: [match]
-    }
-  end
-
-  defp finalize(decision, ctx, started) do
-    %{
-      decision
-      | instance: ctx.instance.name,
-        enforced: decision.enforced or (decision.mode == :enforce and decision.action != :allow),
-        signals: ctx.signals,
-        evidence: ctx.evidence,
-        identity: Context.identity(ctx),
-        method: ctx.method,
-        path: ctx.path,
-        at: ctx.now,
-        duration: System.monotonic_time() - started
-    }
-  end
-
   defp act(decision, conn, ctx) do
     record_ban(decision, ctx)
     conn = emit(decision, conn, ctx.instance)
@@ -308,10 +261,7 @@ defmodule Limen.Plug do
   end
 
   defp emit(decision, conn, instance) do
-    Limen.Stats.incr(instance, decision.action)
-    if decision.enforced, do: Limen.Stats.incr(instance, :enforced)
-    Limen.Telemetry.decision(decision, conn)
-    Limen.DecisionLog.record(instance, decision)
+    Gate.emit(decision, conn, instance)
     Plug.Conn.put_private(conn, :limen, decision)
   end
 
@@ -444,7 +394,7 @@ defmodule Limen.Plug do
     decision =
       result
       |> endpoint_decision(method, config)
-      |> finalize(ctx, started)
+      |> Gate.finalize(ctx, started)
 
     conn = emit(decision, conn, instance)
 

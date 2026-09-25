@@ -15,7 +15,8 @@ defmodule Limen.State do
       and `:hour`, three epoch slots of exact counters plus a Count-Min Sketch
       per slot for keys that arrive once the slot is full.
     * GCRA (`Limen.State.Gcra`): theoretical arrival times for hard limits.
-    * Bans (`Limen.State.BanList`): banned prefixes with their expiry.
+    * Bans (`Limen.State.BanList`): banned prefixes with their expiry, and
+      an outbox of local ban changes `Limen.Cluster` broadcasts.
     * Distinct counting: a HyperLogLog of client prefixes per minute epoch,
       whose estimate a background tick publishes as `active_prefixes/1`, and
       a rotating Bloom filter of (prefix, path) pairs so each client's
@@ -55,7 +56,12 @@ defmodule Limen.State do
             window() => %{tables: tuple(), counts: :atomics.atomics_ref(), sketches: tuple()}
           },
           gcra: %{table: :ets.tid(), size: :atomics.atomics_ref()},
-          bans: %{table: :ets.tid(), size: :atomics.atomics_ref()},
+          bans: %{
+            table: :ets.tid(),
+            size: :atomics.atomics_ref(),
+            outbox: :ets.tid(),
+            outbox_size: :atomics.atomics_ref()
+          },
           distinct: %{
             prefixes: tuple(),
             paths: RotatingBloom.t(),
@@ -107,7 +113,12 @@ defmodule Limen.State do
     %{
       windows: windows,
       gcra: %{table: new_table(:limen_gcra), size: :atomics.new(1, [])},
-      bans: %{table: new_table(:limen_bans), size: :atomics.new(1, [])},
+      bans: %{
+        table: new_table(:limen_bans),
+        size: :atomics.new(1, []),
+        outbox: new_table(:limen_ban_outbox),
+        outbox_size: :atomics.new(1, [])
+      },
       distinct: %{
         prefixes: List.to_tuple(prefixes),
         paths: RotatingBloom.new(config.path_filter_capacity, 0.02),
@@ -186,6 +197,7 @@ defmodule Limen.State do
     [
       gcra: table_memory(gcra.table),
       bans: table_memory(bans.table),
+      ban_outbox: table_memory(bans.outbox),
       fcrdns_cache: table_memory(fcrdns.cache),
       fcrdns_pending: table_memory(fcrdns.pending)
     ]
@@ -219,6 +231,7 @@ defmodule Limen.State do
     Enum.each(state.windows, fn {_window, slots} -> reset_window(slots) end)
     reset_tables([gcra.table], gcra.size)
     reset_tables([bans.table], bans.size)
+    reset_tables([bans.outbox], bans.outbox_size)
     reset_tables([fcrdns.cache, fcrdns.pending], fcrdns.size)
     reset_distinct(state.distinct)
   end
