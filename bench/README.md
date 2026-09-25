@@ -36,3 +36,20 @@ Apple M4 Pro (14 cores), Elixir 1.20.4, OTP 29.1.1, 2 s per scenario.
 The flood scenario counts a new key on every call with the exact tables
 capped at 1,000 keys, so almost every call takes the saturated path: a
 membership check plus a Count-Min Sketch update.
+
+### M2: signals
+
+Same machine. The plug scenario resolves the client behind a trusted proxy,
+reads the JA4 header, tracks behaviour and collects the default signals for a
+Chrome navigation; there is no policy yet, so nothing is scored.
+
+| Scenario | Median | p99 |
+|---|---|---|
+| state: ban lookup, miss | 53 ns | 94 ns |
+| state: gcra check | 121 ns | 178 ns |
+| state: window count | 134 ns | 197 ns |
+| state: window incr, hot key | 138 ns | 205 ns |
+| state: window incr, flood of unique keys | 376 ns | 478 ns |
+| signals: identity via proxy | 953 ns | 1.18 µs |
+| signals: http shape, chrome | 1.93 µs | 2.3 µs |
+| plug: dry-run, default signals, chrome via proxy | 6.83 µs | 8.5 µs |

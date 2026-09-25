@@ -1,0 +1,10 @@
+# Googlebot fetching robots.txt.
+# peer: 10.0.0.2
+# scheme: https
+GET /robots.txt HTTP/1.1
+Host: example.com
+User-Agent: Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)
+Accept: text/plain,text/html,*/*
+Accept-Encoding: gzip, deflate, br
+From: googlebot(at)googlebot.com
+X-Forwarded-For: 66.249.66.1

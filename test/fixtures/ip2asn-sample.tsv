@@ -1,0 +1,6 @@
+1.0.0.0	1.0.0.255	13335	US	CLOUDFLARENET
+3.0.0.0	3.255.255.255	16509	US	AMAZON-02
+8.8.8.0	8.8.8.255	15169	US	GOOGLE
+192.0.2.0	192.0.2.255	0	None	Not routed
+this line is malformed
+2001:db8::	2001:db8:ffff:ffff:ffff:ffff:ffff:ffff	64500	ZZ	EXAMPLE-V6

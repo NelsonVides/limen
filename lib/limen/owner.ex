@@ -12,6 +12,7 @@ defmodule Limen.Owner do
   use GenServer
 
   alias Limen.{DecisionLog, Instance, State, Stats}
+  alias Limen.Signal.UserAgent
 
   @doc false
   @spec start_link({atom(), Limen.Config.t(), pid()}) :: GenServer.on_start()
@@ -24,6 +25,8 @@ defmodule Limen.Owner do
     if taken?(name, supervisor) do
       {:stop, {:already_started, name}}
     else
+      UserAgent.setup()
+
       Instance.publish(%Instance{
         name: name,
         config: config,

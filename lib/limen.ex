@@ -57,6 +57,8 @@ defmodule Limen do
       Plug,
       State,
       {State, []},
+      Signal,
+      {Signal, []},
       Stats,
       Supervisor,
       Telemetry

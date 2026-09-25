@@ -1,0 +1,11 @@
+# python-requests with default headers.
+# peer: 10.0.0.2
+# scheme: https
+GET /products?page=3 HTTP/1.1
+Host: example.com
+User-Agent: python-requests/2.32.3
+Accept-Encoding: gzip, deflate
+Accept: */*
+Connection: keep-alive
+X-Forwarded-For: 192.0.2.100
+X-Ja4: t13d1812h1_85036bcba153_375ca2c5e164

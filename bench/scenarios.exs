@@ -17,6 +17,8 @@ defmodule Limen.Bench.Scenarios do
 
   import Plug.Test
 
+  alias Limen.{Context, Signal}
+  alias Limen.Signal.HttpShape
   alias Limen.State.{BanList, Gcra, Window}
 
   @batch 100
@@ -99,10 +101,45 @@ defmodule Limen.Bench.Scenarios do
 
   defp plug do
     opts = Limen.Plug.init(instance: @instance)
-    conn = conn(:get, "/articles/42") |> Plug.Conn.put_req_header("user-agent", "bench")
+    proxied = [trusted_proxies: ["10.0.0.0/8"], client_ip_header: "x-forwarded-for"]
+
+    chrome =
+      :get
+      |> conn("/articles/42")
+      |> Map.put(:remote_ip, {10, 0, 0, 2})
+      |> Map.put(:scheme, :https)
+      |> Map.put(:req_headers, chrome_headers())
 
     %{
-      "plug: dry-run, no signals" => {fn _instance -> Limen.Plug.call(conn, opts) end, []}
+      "plug: dry-run, default signals, chrome via proxy" =>
+        {fn _instance -> Limen.Plug.call(chrome, opts) end, proxied},
+      "signals: identity via proxy" =>
+        {fn instance -> Signal.identify(Context.from_conn(chrome, instance), instance.config) end,
+         proxied},
+      "signals: http shape, chrome" =>
+        {fn instance -> HttpShape.collect(Context.from_conn(chrome, instance)) end, []}
     }
+  end
+
+  defp chrome_headers do
+    [
+      {"host", "example.com"},
+      {"sec-ch-ua", ~s("Chromium";v="128", "Not;A=Brand";v="24", "Google Chrome";v="128")},
+      {"sec-ch-ua-mobile", "?0"},
+      {"sec-ch-ua-platform", ~s("Windows")},
+      {"upgrade-insecure-requests", "1"},
+      {"user-agent",
+       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " <>
+         "Chrome/128.0.0.0 Safari/537.36"},
+      {"accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+      {"sec-fetch-site", "none"},
+      {"sec-fetch-mode", "navigate"},
+      {"sec-fetch-user", "?1"},
+      {"sec-fetch-dest", "document"},
+      {"accept-encoding", "gzip, deflate, br, zstd"},
+      {"accept-language", "en-US,en;q=0.9"},
+      {"x-forwarded-for", "203.0.113.7"},
+      {"x-ja4", "t13d1516h2_8daaf6152771_02713d6af862"}
+    ]
   end
 end

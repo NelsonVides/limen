@@ -5,7 +5,8 @@ defmodule Limen.Sketch.CountMinTest do
   alias Limen.Sketch.CountMin
 
   property "never undercounts" do
-    check all(counts <- map_of(integer(), integer(1..20), max_length: 300)) do
+    check all counts <- list_of(integer(1..20), max_length: 300) do
+      counts = Enum.with_index(counts, fn count, key -> {{:key, key}, count} end)
       sketch = CountMin.new(64, 4)
 
       for {key, count} <- counts, _time <- 1..count do

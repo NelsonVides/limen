@@ -1,0 +1,6 @@
+# A bare HTTP/1.0-style request.
+# peer: 10.0.0.2
+# scheme: https
+GET /wp-login.php HTTP/1.1
+Host: example.com
+X-Forwarded-For: 192.0.2.200

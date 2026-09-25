@@ -14,9 +14,14 @@ defmodule Limen.State.Window do
 
       estimate = current + previous × (duration - elapsed) / duration
 
-  Each slot counts up to `:max_keys` keys exactly. After that, new keys are
-  counted in the slot's Count-Min Sketch, whose estimates may overcount but
-  never undercount.
+  A key holds one count (`incr/4`, `count/4`) or a row of several (`add/5`,
+  `read/5`). A row keeps counts about the same subject together: updating
+  any of them costs one table update and one lookup of the previous epoch,
+  and returns all of them.
+
+  Each slot counts up to `:max_keys` keys exactly, a row being one key. After
+  that, new keys are counted in the slot's Count-Min Sketch, whose estimates
+  may overcount but never undercount.
   """
 
   alias Limen.Instance
@@ -53,6 +58,37 @@ defmodule Limen.State.Window do
   end
 
   @doc """
+  Adds `increments` to the row of counts of `key` at `now` (milliseconds)
+  and returns the sliding estimate of every count, including them.
+
+  `increments` has one non-negative integer per count, at least one of them
+  positive. A key's rows always have the same number of counts.
+  """
+  @spec add(Instance.t(), window(), term(), tuple(), integer()) :: tuple()
+  def add(%Instance{} = instance, window, key, increments, now) do
+    duration = State.duration(window)
+    epoch = div(now, duration)
+    slots = slots(instance, window)
+    current = add_row(instance, slots, key, Tuple.to_list(increments), epoch)
+    previous = read_row(slots, key, tuple_size(increments), epoch - 1)
+    slide(current, previous, now, duration)
+  end
+
+  @doc """
+  Returns the sliding estimates of the `width` counts in the row of `key` at
+  `now` without counting.
+  """
+  @spec read(Instance.t(), window(), term(), pos_integer(), integer()) :: tuple()
+  def read(%Instance{} = instance, window, key, width, now) do
+    duration = State.duration(window)
+    epoch = div(now, duration)
+    slots = slots(instance, window)
+    current = read_row(slots, key, width, epoch)
+    previous = read_row(slots, key, width, epoch - 1)
+    slide(current, previous, now, duration)
+  end
+
+  @doc """
   Returns the exact counts of the current epoch, largest first.
 
   Scans the slot, so it is meant for dashboards, not for the request path.
@@ -86,7 +122,9 @@ defmodule Limen.State.Window do
     %{tables: tables, counts: counts, sketches: sketches} = slots(instance, window)
     table = elem(tables, slot)
 
-    cleared = :ets.select_delete(table, [{{{:_, :"$1"}, :_}, [{:<, :"$1", epoch}], [true]}])
+    # Matches entries of any width by the epoch in their key.
+    older = [{:"$1", [{:<, {:element, 2, {:element, 1, :"$1"}}, epoch}], [true]}]
+    cleared = :ets.select_delete(table, older)
     :atomics.put(counts, slot + 1, :ets.info(table, :size))
     CountMin.reset(elem(sketches, slot))
     cleared
@@ -131,6 +169,48 @@ defmodule Limen.State.Window do
     ArgumentError -> CountMin.add(sketch, entry)
   end
 
+  defp add_row(instance, %{max_keys: max_keys} = slots, key, increments, epoch) do
+    slot = rem(epoch, State.slots())
+    table = elem(slots.tables, slot)
+    entry = {key, epoch}
+    # An increment of zero reads a count without changing it, so the update
+    # returns the whole row.
+    ops = Enum.with_index(increments, fn increment, n -> {n + 2, increment} end)
+
+    if :atomics.get(slots.counts, slot + 1) < max_keys do
+      default = List.to_tuple([entry | Enum.map(increments, fn _increment -> 0 end)])
+      counts = :ets.update_counter(table, entry, ops, default)
+      # A row that existed already held a positive count, so only a new row
+      # comes back equal to the increments.
+      if counts == increments, do: :atomics.add(slots.counts, slot + 1, 1)
+      counts
+    else
+      add_saturated(instance, table, entry, ops, increments, elem(slots.sketches, slot))
+    end
+  end
+
+  defp add_saturated(instance, table, entry, ops, increments, sketch) do
+    if :ets.member(table, entry) do
+      :ets.update_counter(table, entry, ops)
+    else
+      Limen.Stats.incr(instance, :saturated)
+      add_sketch(sketch, entry, increments)
+    end
+  rescue
+    # The entry was cleared between the membership check and the update,
+    # which only happens to entries of an expired epoch.
+    ArgumentError -> add_sketch(sketch, entry, increments)
+  end
+
+  defp add_sketch(sketch, entry, increments) do
+    increments
+    |> Enum.with_index(1)
+    |> Enum.map(fn
+      {0, n} -> CountMin.estimate(sketch, {entry, n})
+      {increment, n} -> CountMin.add(sketch, {entry, n}, increment)
+    end)
+  end
+
   # The sketch only holds counts once a slot has filled up, so a miss in a
   # slot that never did is an exact zero.
   defp read_slot(
@@ -150,6 +230,35 @@ defmodule Limen.State.Window do
       n when is_integer(n) ->
         n
     end
+  end
+
+  defp read_row(
+         %{tables: tables, counts: counts, sketches: sketches, max_keys: max_keys},
+         key,
+         width,
+         epoch
+       ) do
+    slot = rem(epoch, State.slots())
+    entry = {key, epoch}
+
+    case :ets.lookup(elem(tables, slot), entry) do
+      [row] ->
+        tl(Tuple.to_list(row))
+
+      [] ->
+        if :atomics.get(counts, slot + 1) >= max_keys,
+          do: estimate_row(elem(sketches, slot), entry, width),
+          else: List.duplicate(0, width)
+    end
+  end
+
+  defp estimate_row(sketch, entry, width),
+    do: for(n <- 1..width, do: CountMin.estimate(sketch, {entry, n}))
+
+  defp slide(current, previous, now, duration) do
+    current
+    |> Enum.zip_with(previous, fn count, previous -> count + weigh(previous, now, duration) end)
+    |> List.to_tuple()
   end
 
   defp weigh(0, _now, _duration), do: 0

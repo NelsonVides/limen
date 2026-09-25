@@ -34,7 +34,7 @@ defmodule Limen.Context do
           now: integer(),
           signals: %{optional(atom()) => term()},
           evidence: %{optional(atom()) => term()},
-          rates: %{optional(term()) => non_neg_integer()}
+          rates: %{optional(term()) => non_neg_integer() | tuple()}
         }
 
   defstruct instance: nil,

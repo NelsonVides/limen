@@ -8,9 +8,11 @@ defmodule Limen.Plug do
 
   Every request goes through the same pipeline:
 
-    1. **Collect** the client identity into a `Limen.Context`.
-    2. **Decide** on an action.
-    3. **Act**: continue, or respond on the application's behalf.
+    1. **Identify** the client: address, prefix and JA4 fingerprint (see
+       `Limen.Signal`), and track its behaviour.
+    2. **Collect** signals into a `Limen.Context`.
+    3. **Decide** on an action.
+    4. **Act**: continue, or respond on the application's behalf.
 
   Each evaluation produces a `Limen.Decision`, emitted as a
   `[:limen, :decision]` telemetry event and sampled into
@@ -30,8 +32,9 @@ defmodule Limen.Plug do
 
   @behaviour Plug
 
-  alias Limen.{Context, Decision, Instance}
+  alias Limen.{Context, Decision, Instance, Signal}
   alias Limen.Decision.Match
+  alias Limen.Signal.Behaviour
   alias Limen.State.BanList
 
   @impl true
@@ -66,18 +69,23 @@ defmodule Limen.Plug do
     instance = Instance.fetch!(name)
     config = instance.config
 
-    ctx = identify(Context.from_conn(conn, instance), config)
+    ctx = Signal.identify(Context.from_conn(conn, instance), config)
+    {conn, ctx} = Behaviour.track(conn, ctx)
+    {decision, ctx} = evaluate(ctx, mode || config.mode)
 
-    ctx
-    |> evaluate(mode || config.mode)
+    decision
     |> finalize(ctx, started)
     |> act(conn, instance)
   end
 
   defp evaluate(ctx, mode) do
     case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
-      nil -> %Decision{action: :allow, stage: :decide, mode: mode}
-      ban -> banned(ban, mode)
+      nil ->
+        ctx = Signal.collect(ctx, Signal.defaults())
+        {%Decision{action: :allow, stage: :decide, mode: mode}, ctx}
+
+      ban ->
+        {banned(ban, mode), ctx}
     end
   end
 
@@ -96,10 +104,6 @@ defmodule Limen.Plug do
       mode: if(mode == :enforce and ban.mode == :enforce, do: :enforce, else: :dry_run),
       matches: [match]
     }
-  end
-
-  defp identify(ctx, config) do
-    %{ctx | prefix: Limen.IP.prefix(ctx.client_ip, config.ipv4_prefix, config.ipv6_prefix)}
   end
 
   defp finalize(decision, ctx, started) do

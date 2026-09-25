@@ -21,18 +21,16 @@ defmodule Limen.State.GcraTest do
   end
 
   defp arrivals do
-    gen all(gaps <- list_of(integer(0..400_000), min_length: 1, max_length: 60)) do
+    gen all gaps <- list_of(integer(0..400_000), min_length: 1, max_length: 60) do
       Enum.scan(gaps, 1_000_000_000, &(&1 + &2))
     end
   end
 
   property "matches a reference GCRA for sequential requests", %{instance: instance} do
-    check all(
-            rate <- integer(1..20),
-            period <- member_of([1_000, 10_000, 60_000]),
-            burst <- integer(0..5),
-            times <- arrivals()
-          ) do
+    check all rate <- integer(1..20),
+              period <- member_of([1_000, 10_000, 60_000]),
+              burst <- integer(0..5),
+              times <- arrivals() do
       key = make_ref()
       interval = div(period * 1_000, rate)
       tolerance = interval * (burst + 1)
@@ -46,7 +44,7 @@ defmodule Limen.State.GcraTest do
   property "never admits more than Δ/T + burst + 1 requests in any interval", %{
     instance: instance
   } do
-    check all(rate <- integer(1..10), burst <- integer(0..3), times <- arrivals()) do
+    check all rate <- integer(1..10), burst <- integer(0..3), times <- arrivals() do
       key = make_ref()
       interval = div(1_000_000, rate)
       admitted = Enum.filter(times, &(Gcra.check(instance, key, rate, 1_000, burst, &1) == :ok))

@@ -96,6 +96,16 @@ defmodule Limen.MixProject do
           Limen.State.Sweeper
         ],
         Sketches: [Limen.Sketch, Limen.Sketch.CountMin],
+        Signals: [
+          Limen.Signal,
+          Limen.Signal.ClientIP,
+          Limen.Signal.JA4,
+          Limen.Signal.HttpShape,
+          Limen.Signal.UserAgent,
+          Limen.Signal.Behaviour,
+          Limen.Signal.Asn,
+          Limen.Signal.Asn.Loader
+        ],
         Observability: [
           Limen.Telemetry,
           Limen.DecisionLog,

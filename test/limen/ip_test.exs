@@ -20,23 +20,19 @@ defmodule Limen.IPTest do
     end
 
     property "every address in a prefix aggregates to the same key" do
-      check all(
-              a <- integer(0..255),
-              b <- integer(0..255),
-              c <- integer(0..255),
-              d1 <- integer(0..255),
-              d2 <- integer(0..255)
-            ) do
+      check all a <- integer(0..255),
+                b <- integer(0..255),
+                c <- integer(0..255),
+                d1 <- integer(0..255),
+                d2 <- integer(0..255) do
         assert IP.prefix({a, b, c, d1}, 24, 64) == IP.prefix({a, b, c, d2}, 24, 64)
       end
     end
 
     property "IPv6 addresses sharing the first 64 bits share a /64" do
-      check all(
-              head <- list_of(integer(0..0xFFFF), length: 4),
-              tail1 <- list_of(integer(0..0xFFFF), length: 4),
-              tail2 <- list_of(integer(0..0xFFFF), length: 4)
-            ) do
+      check all head <- list_of(integer(0..0xFFFF), length: 4),
+                tail1 <- list_of(integer(0..0xFFFF), length: 4),
+                tail2 <- list_of(integer(0..0xFFFF), length: 4) do
         ip1 = List.to_tuple(head ++ tail1)
         ip2 = List.to_tuple(head ++ tail2)
         assert IP.prefix(ip1, 32, 64) == IP.prefix(ip2, 32, 64)
@@ -44,7 +40,7 @@ defmodule Limen.IPTest do
     end
 
     property "integer conversion round-trips" do
-      check all(parts <- list_of(integer(0..0xFFFF), length: 8), parts != [0, 0, 0, 0, 0, 0xFFFF]) do
+      check all parts <- list_of(integer(0..0xFFFF), length: 8), parts != [0, 0, 0, 0, 0, 0xFFFF] do
         ip = List.to_tuple(parts)
 
         case IP.to_integer(ip) do
@@ -75,7 +71,7 @@ defmodule Limen.IPTest do
     end
 
     property "an address is a member of its own prefix" do
-      check all(parts <- list_of(integer(0..255), length: 4), length <- integer(8..32)) do
+      check all parts <- list_of(integer(0..255), length: 4), length <- integer(8..32) do
         ip = List.to_tuple(parts)
         set = IP.cidr_set([IP.prefix(ip, length, 64)])
         assert IP.member?(set, ip)

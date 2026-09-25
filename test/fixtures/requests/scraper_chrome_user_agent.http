@@ -1,0 +1,11 @@
+# python-requests borrowing Chrome's user agent string.
+# peer: 10.0.0.2
+# scheme: https
+GET /products?page=4 HTTP/1.1
+Host: example.com
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36
+Accept-Encoding: gzip, deflate
+Accept: */*
+Connection: keep-alive
+X-Forwarded-For: 192.0.2.101
+X-Ja4: t13d1812h1_85036bcba153_375ca2c5e164

@@ -18,6 +18,19 @@ defmodule Limen.Config do
       decision is computed, recorded and emitted exactly as in enforce mode,
       but the request always continues. Routes and policies can override it.
 
+    * `:trusted_proxies` - CIDR ranges of the reverse proxies and TLS
+      terminators in front of the application. Forwarding headers and the JA4
+      header are only read from these peers. Defaults to `[]`.
+
+    * `:client_ip_header` - how trusted proxies report the client address:
+      `"x-forwarded-for"`, `"x-real-ip"`, `"forwarded"` (RFC 7239) or `nil`
+      (default) to always use the peer address. Forwarding chains are walked
+      from the right, skipping trusted proxies, so clients cannot spoof their
+      address by sending the header themselves.
+
+    * `:ja4_header` - request header the TLS terminator stores the JA4
+      fingerprint in. Defaults to `"x-ja4"`.
+
     * `:ipv4_prefix` - prefix length IPv4 clients are aggregated to. Defaults
       to `32`.
 
@@ -32,6 +45,17 @@ defmodule Limen.Config do
       * `:flush_interval` - milliseconds between flushes to `Logger`. Defaults
         to `1000`.
       * `:level` - `Logger` level. Defaults to `:info`.
+
+    * `:asn` - IP to ASN data, see `Limen.Signal.Asn`:
+      * `:file` - an iptoasn.com `ip2asn-combined.tsv` file (optionally
+        gzipped) loaded at startup. Defaults to `nil`.
+      * `:hosting` - additional ASNs classified as hosting providers, on top
+        of the built-in list.
+
+    * `:shape` - HTTP shape analysis, see `Limen.Signal.HttpShape`:
+      * `:ignore_headers` - headers left out of the header-order shape, such
+        as those added by your proxies. Forwarding headers and the JA4 header
+        are always left out.
 
     * `:state` - sizing of the shared state, see `Limen.State`:
       * `:max_keys` - exact keys per time-window epoch slot. Each window
@@ -48,7 +72,7 @@ defmodule Limen.Config do
       Sketch dimensions are read once at startup.
   """
 
-  use Boundary, type: :strict, deps: [Logger]
+  use Boundary, type: :strict, deps: [Limen.IP, Logger]
 
   @decision_log_defaults %{
     sample_rate: 0.0,
@@ -67,8 +91,16 @@ defmodule Limen.Config do
     sweep_interval: 5_000
   }
 
+  @asn_defaults %{file: nil, hosting: []}
+  @shape_defaults %{ignore_headers: %{}}
+
   @defaults %{
     mode: :dry_run,
+    trusted_proxies: %{lengths: %{}, members: %{}},
+    client_ip_header: nil,
+    ja4_header: "x-ja4",
+    asn: @asn_defaults,
+    shape: @shape_defaults,
     ipv4_prefix: 32,
     ipv6_prefix: 64,
     decision_log: @decision_log_defaults,
@@ -125,6 +157,40 @@ defmodule Limen.Config do
 
   defp validate(:mode, mode, _config) when mode in [:dry_run, :enforce], do: {:ok, mode}
   defp validate(:mode, _mode, _config), do: {:error, "expected :dry_run or :enforce"}
+
+  defp validate(:trusted_proxies, ranges, _config) when is_list(ranges) do
+    {:ok, Limen.IP.cidr_set(ranges)}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  defp validate(:client_ip_header, header, _config)
+       when header in [nil, "x-forwarded-for", "x-real-ip", "forwarded"],
+       do: {:ok, header}
+
+  defp validate(:client_ip_header, _header, _config),
+    do: {:error, ~s(expected nil, "x-forwarded-for", "x-real-ip" or "forwarded")}
+
+  defp validate(:ja4_header, header, _config) when is_binary(header),
+    do: {:ok, String.downcase(header)}
+
+  defp validate(:asn, opts, _config) when is_list(opts) do
+    merge_known(@asn_defaults, opts, fn
+      :file, file -> is_nil(file) or is_binary(file)
+      :hosting, asns -> is_list(asns) and Enum.all?(asns, &(is_integer(&1) and &1 > 0))
+    end)
+  end
+
+  defp validate(:shape, opts, _config) when is_list(opts) do
+    valid? = fn :ignore_headers, headers ->
+      is_list(headers) and Enum.all?(headers, &is_binary/1)
+    end
+
+    with {:ok, shape} <- merge_known(%{ignore_headers: []}, opts, valid?) do
+      {:ok,
+       %{shape | ignore_headers: Map.new(shape.ignore_headers, &{String.downcase(&1), true})}}
+    end
+  end
 
   defp validate(:ipv4_prefix, length, _config) when length in 8..32, do: {:ok, length}
 

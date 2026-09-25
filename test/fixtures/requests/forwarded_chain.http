@@ -1,0 +1,15 @@
+# A client-supplied X-Forwarded-For entry, then two trusted proxy hops.
+# peer: 10.0.0.2
+# scheme: https
+GET / HTTP/1.1
+Host: example.com
+User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:130.0) Gecko/20100101 Firefox/130.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: de-DE,de;q=0.8,en-US;q=0.5,en;q=0.3
+Accept-Encoding: gzip, deflate, br, zstd
+Sec-Fetch-Dest: document
+Sec-Fetch-Mode: navigate
+Sec-Fetch-Site: none
+X-Forwarded-For: 6.6.6.6, 203.0.113.60
+X-Forwarded-For: 10.0.0.5
+X-Ja4: not-a-fingerprint

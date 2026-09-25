@@ -4,40 +4,45 @@ defmodule Limen.State.BanListTest do
   alias Limen.State.BanList
 
   @prefix {4, 0xC0000201, 32}
-  @now 1_700_000_000_000
 
-  test "a ban is active until it expires", %{instance: instance} do
+  # Tests pass explicit times; start a day ahead so the background sweeper,
+  # which uses the real clock, never sees these bans as expired.
+  setup do
+    %{now: System.system_time(:millisecond) + 86_400_000}
+  end
+
+  test "a ban is active until it expires", %{instance: instance, now: now} do
     capture_events([[:limen, :ban, :added]], instance.name)
-    assert BanList.ban(instance, @prefix, 60, reason: :abuse, now: @now) == :ok
+    assert BanList.ban(instance, @prefix, 60, reason: :abuse, now: now) == :ok
 
     assert %{reason: :abuse, mode: :enforce, origin: :admin} =
-             BanList.lookup(instance, @prefix, @now)
+             BanList.lookup(instance, @prefix, now)
 
-    assert BanList.lookup(instance, @prefix, @now + 59_999)
-    refute BanList.lookup(instance, @prefix, @now + 60_000)
+    assert BanList.lookup(instance, @prefix, now + 59_999)
+    refute BanList.lookup(instance, @prefix, now + 60_000)
     assert_receive {:event, [:limen, :ban, :added], %{ttl: 60}, %{prefix: @prefix}}
   end
 
-  test "banning again extends and escalates, never shortens", %{instance: instance} do
-    BanList.ban(instance, @prefix, 60, mode: :dry_run, now: @now)
-    BanList.ban(instance, @prefix, 10, mode: :dry_run, now: @now)
-    assert BanList.lookup(instance, @prefix, @now).expires_at == @now + 60_000
+  test "banning again extends and escalates, never shortens", %{instance: instance, now: now} do
+    BanList.ban(instance, @prefix, 60, mode: :dry_run, now: now)
+    BanList.ban(instance, @prefix, 10, mode: :dry_run, now: now)
+    assert BanList.lookup(instance, @prefix, now).expires_at == now + 60_000
 
-    BanList.ban(instance, @prefix, 10, mode: :enforce, now: @now)
-    assert %{mode: :enforce, expires_at: expires_at} = BanList.lookup(instance, @prefix, @now)
-    assert expires_at == @now + 60_000
+    BanList.ban(instance, @prefix, 10, mode: :enforce, now: now)
+    assert %{mode: :enforce, expires_at: expires_at} = BanList.lookup(instance, @prefix, now)
+    assert expires_at == now + 60_000
 
-    BanList.ban(instance, @prefix, 120, mode: :dry_run, now: @now)
-    assert %{mode: :enforce, expires_at: expires_at} = BanList.lookup(instance, @prefix, @now)
-    assert expires_at == @now + 120_000
+    BanList.ban(instance, @prefix, 120, mode: :dry_run, now: now)
+    assert %{mode: :enforce, expires_at: expires_at} = BanList.lookup(instance, @prefix, now)
+    assert expires_at == now + 120_000
   end
 
-  test "sweep removes expired bans", %{instance: instance} do
-    BanList.ban(instance, @prefix, 1, now: @now)
-    BanList.ban(instance, {4, 1, 32}, 100, now: @now)
+  test "sweep removes expired bans", %{instance: instance, now: now} do
+    BanList.ban(instance, @prefix, 1, now: now)
+    BanList.ban(instance, {4, 1, 32}, 100, now: now)
 
-    assert BanList.sweep(instance, @now + 1_000) == 1
-    assert [%{prefix: {4, 1, 32}}] = BanList.list(instance, @now + 1_000)
+    assert BanList.sweep(instance, now + 1_000) == 1
+    assert [%{prefix: {4, 1, 32}}] = BanList.list(instance, now + 1_000)
   end
 
   @tag config: [state: [max_bans: 2]]

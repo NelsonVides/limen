@@ -10,7 +10,7 @@ defmodule Limen.State.WindowTest do
   @t0 3_600_000 * 5_000_000
 
   property "counts exactly below the cap", %{instance: instance} do
-    check all(events <- list_of(member_of([:a, :b, :c, :d]), max_length: 200)) do
+    check all events <- list_of(member_of([:a, :b, :c, :d]), max_length: 200) do
       State.reset(instance)
       Enum.each(events, &Window.incr(instance, :minute, &1, @t0 + 10))
       frequencies = Enum.frequencies(events)
@@ -56,6 +56,45 @@ defmodule Limen.State.WindowTest do
     Window.incr(instance, :second, :k, @t0 + 4_000)
     Window.rotate(instance, :second, @t0 + 3_999)
     assert Window.count(instance, :second, :k, @t0 + 4_000) == 1
+  end
+
+  test "a row keeps several counts under one key", %{instance: instance} do
+    assert Window.add(instance, :minute, :row, {1, 1, 0}, @t0) == {1, 1, 0}
+    assert Window.add(instance, :minute, :row, {1, 0, 2}, @t0 + 1) == {2, 1, 2}
+    assert Window.read(instance, :minute, :row, 3, @t0 + 2) == {2, 1, 2}
+    assert Window.read(instance, :minute, :other, 3, @t0 + 2) == {0, 0, 0}
+    assert :ets.info(State.table(instance, :minute, 0), :size) == 1
+  end
+
+  test "each count of a row slides on its own", %{instance: instance} do
+    Window.add(instance, :second, :row, {100, 0, 40}, @t0 + 500)
+    Window.add(instance, :second, :row, {1, 1, 0}, @t0 + 1_250)
+
+    assert Window.read(instance, :second, :row, 3, @t0 + 1_250) == {76, 1, 30}
+  end
+
+  test "rotation clears rows", %{instance: instance} do
+    Window.add(instance, :second, :stale, {1, 1}, @t0 + 1_000)
+    Window.add(instance, :second, :fresh, {1, 1}, @t0 + 3_000)
+
+    assert Window.rotate(instance, :second, @t0 + 3_000) == 1
+    assert Window.read(instance, :second, :stale, 2, @t0 + 1_000) == {0, 0}
+    assert Window.read(instance, :second, :fresh, 2, @t0 + 3_000) == {1, 1}
+  end
+
+  @tag config: [state: [max_keys: 3]]
+  test "a row is one key towards the cap, and new rows of a full slot go to the sketch", %{
+    instance: instance
+  } do
+    for n <- 1..3, _event <- 1..5, do: Window.add(instance, :minute, {:row, n}, {1, 0}, @t0)
+    assert Window.add(instance, :minute, {:row, 1}, {1, 1}, @t0) == {6, 1}
+
+    assert {count, 0} = Window.add(instance, :minute, {:row, 4}, {2, 0}, @t0)
+    assert count >= 2
+    assert {^count, 0} = Window.read(instance, :minute, {:row, 4}, 2, @t0)
+
+    assert :ets.info(State.table(instance, :minute, 0), :size) == 3
+    assert Limen.Stats.snapshot(instance).saturated == 1
   end
 
   @tag config: [state: [max_keys: 100]]

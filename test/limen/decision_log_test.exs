@@ -22,6 +22,9 @@ defmodule Limen.DecisionLogTest do
     paths = Enum.map(DecisionLog.recent(limen, 3), & &1.path)
     assert paths == ["/20", "/19", "/18"]
     assert length(DecisionLog.recent(limen, 100)) == 8
+
+    # The overflow is reported when the buffer is drained.
+    assert capture_log(fn -> Flusher.flush(limen) end) =~ "12 entries dropped"
   end
 
   @tag config: [decision_log: [sample_rate: 0.0, non_allow_sample_rate: 1.0, size: 8]]

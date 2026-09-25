@@ -23,7 +23,8 @@ defmodule Limen.Supervisor do
       {Limen.Owner, {name, config, self()}},
       {Limen.DecisionLog.Flusher, name},
       {Limen.State.Rotator, name},
-      {Limen.State.Sweeper, name}
+      {Limen.State.Sweeper, name},
+      {Limen.Signal.Asn.Loader, name}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)

@@ -1,0 +1,9 @@
+# curl connecting directly, claiming another address and fingerprint.
+# peer: 198.51.100.200
+# scheme: http
+GET / HTTP/1.1
+Host: example.com
+User-Agent: curl/8.5.0
+Accept: */*
+X-Forwarded-For: 1.2.3.4
+X-Ja4: t13d1516h2_8daaf6152771_02713d6af862

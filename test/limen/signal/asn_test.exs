@@ -1,0 +1,63 @@
+defmodule Limen.Signal.AsnTest do
+  use Limen.Case, async: true
+
+  alias Limen.Context
+  alias Limen.Signal.Asn
+  alias Limen.Signal.Asn.Loader
+
+  @fixture Path.expand("../../fixtures/ip2asn-sample.tsv", __DIR__)
+
+  test "loads ranges and looks addresses up", %{limen: limen} do
+    assert {:ok, 4} = Loader.load(limen, @fixture)
+
+    assert %{asn: 16_509, country: "US", name: "AMAZON-02"} = Asn.lookup(limen, {3, 5, 140, 2})
+    assert %{asn: 13_335} = Asn.lookup(limen, {1, 0, 0, 255})
+    assert %{asn: 64_500, country: "ZZ"} = Asn.lookup(limen, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
+    assert Asn.lookup(limen, {1, 0, 1, 0}) == nil
+    assert Asn.lookup(limen, {192, 0, 2, 1}) == nil
+    assert Asn.lookup(limen, {0x2001, 0xDB9, 0, 0, 0, 0, 0, 1}) == nil
+    assert Asn.lookup(limen, {0, 0, 0, 1}) == nil
+  end
+
+  test "loads gzipped files", %{limen: limen} do
+    path = Path.join(System.tmp_dir!(), "limen-asn-#{System.unique_integer([:positive])}.tsv.gz")
+    File.write!(path, :zlib.gzip(File.read!(@fixture)))
+    on_exit(fn -> File.rm(path) end)
+
+    assert {:ok, 4} = Loader.load(limen, path)
+    assert %{asn: 15_169} = Asn.lookup(limen, {8, 8, 8, 8})
+  end
+
+  test "a reload replaces the table", %{limen: limen} do
+    {:ok, 1} = Loader.load_rows(limen, [{"8.8.8.0", "8.8.8.255", 15_169, "US", "GOOGLE"}])
+    {:ok, 1} = Loader.load_rows(limen, [{"8.8.4.0", "8.8.4.255", 15_169, "US", "GOOGLE"}])
+
+    assert Asn.lookup(limen, {8, 8, 8, 8}) == nil
+    assert %{asn: 15_169} = Asn.lookup(limen, {8, 8, 4, 4})
+  end
+
+  test "reports load errors without replacing the table", %{limen: limen} do
+    {:ok, 1} = Loader.load_rows(limen, [{"8.8.8.0", "8.8.8.255", 15_169, "US", "GOOGLE"}])
+    assert {:error, _message} = Loader.load(limen, "/does/not/exist.tsv")
+    assert %{asn: 15_169} = Asn.lookup(limen, {8, 8, 8, 8})
+  end
+
+  @tag config: [asn: [hosting: [13_335]]]
+  test "classifies hosting providers, including configured ones", %{limen: limen} do
+    {:ok, _count} = Loader.load(limen, @fixture)
+
+    assert signals(limen, {3, 1, 1, 1}) == %{
+             asn: 16_509,
+             asn_kind: :hosting,
+             asn_country: "US",
+             asn_name: "AMAZON-02"
+           }
+
+    assert %{asn_kind: :hosting} = signals(limen, {1, 0, 0, 1})
+    assert %{asn_kind: :other} = signals(limen, {8, 8, 8, 8})
+    assert signals(limen, {9, 9, 9, 9}) == %{asn: nil, asn_kind: :unknown}
+  end
+
+  defp signals(limen, ip),
+    do: Asn.collect(%Context{instance: instance(limen), client_ip: ip}).signals
+end
