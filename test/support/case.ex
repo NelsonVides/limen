@@ -35,6 +35,14 @@ defmodule Limen.Case do
   def instance(name), do: Limen.Instance.fetch!(name)
 
   @doc """
+  A system time a day from now, in milliseconds.
+
+  Tests that pin request times use it so that background processes, which
+  run on the real clock, never treat their state as expired.
+  """
+  def future_now, do: System.system_time(:millisecond) + 86_400_000
+
+  @doc """
   Attaches a telemetry handler forwarding `events` of instance `name` to the
   test process.
   """

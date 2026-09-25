@@ -11,8 +11,7 @@ defmodule Limen.PlugTest do
 
       refute conn.halted
 
-      assert %Decision{instance: ^limen, action: :allow, mode: :dry_run, enforced: false} =
-               Limen.decision(conn)
+      assert %Decision{instance: ^limen, mode: :dry_run, enforced: false} = Limen.decision(conn)
 
       assert_receive {:event, [:limen, :decision], %{duration: duration}, %{decision: decision}}
       assert duration >= 0

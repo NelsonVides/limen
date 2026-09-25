@@ -86,7 +86,13 @@ defmodule Limen.MixProject do
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       groups_for_modules: [
         Gate: [Limen, Limen.Plug, Limen.Context, Limen.Decision, Limen.Decision.Match],
-        Configuration: [Limen.Config],
+        Configuration: [Limen.Config, Limen.Lists],
+        Policies: [
+          Limen.Policy,
+          Limen.Policy.Default,
+          Limen.Policy.Runtime,
+          Limen.Tarpit
+        ],
         State: [
           Limen.State,
           Limen.State.Window,

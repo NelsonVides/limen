@@ -57,6 +57,12 @@ defmodule Limen.Config do
         as those added by your proxies. Forwarding headers and the JA4 header
         are always left out.
 
+    * `:tarpit` - limits on tarpitted requests, see `Limen.Tarpit`:
+      * `:max_concurrent` - requests held at once. Defaults to `1_000`.
+      * `:max_delay` - longest delay in milliseconds. Defaults to `30_000`.
+
+    * `:lists` - named lists loaded at startup, see `Limen.Lists`.
+
     * `:state` - sizing of the shared state, see `Limen.State`:
       * `:max_keys` - exact keys per time-window epoch slot. Each window
         keeps up to three slots. Defaults to `50_000`.
@@ -94,6 +100,8 @@ defmodule Limen.Config do
   @asn_defaults %{file: nil, hosting: []}
   @shape_defaults %{ignore_headers: %{}}
 
+  @tarpit_defaults %{max_concurrent: 1_000, max_delay: 30_000}
+
   @defaults %{
     mode: :dry_run,
     trusted_proxies: %{lengths: %{}, members: %{}},
@@ -101,6 +109,8 @@ defmodule Limen.Config do
     ja4_header: "x-ja4",
     asn: @asn_defaults,
     shape: @shape_defaults,
+    tarpit: @tarpit_defaults,
+    lists: [],
     ipv4_prefix: 32,
     ipv6_prefix: 64,
     decision_log: @decision_log_defaults,
@@ -190,6 +200,22 @@ defmodule Limen.Config do
       {:ok,
        %{shape | ignore_headers: Map.new(shape.ignore_headers, &{String.downcase(&1), true})}}
     end
+  end
+
+  defp validate(:lists, lists, _config) when is_list(lists) do
+    Enum.each(lists, fn
+      {name, {:cidr, ranges}} when is_atom(name) and is_list(ranges) -> Limen.IP.cidr_set(ranges)
+      {name, values} when is_atom(name) and is_list(values) -> :ok
+      other -> raise ArgumentError, "invalid list #{inspect(other)}"
+    end)
+
+    {:ok, lists}
+  rescue
+    e in ArgumentError -> {:error, Exception.message(e)}
+  end
+
+  defp validate(:tarpit, opts, _config) when is_list(opts) do
+    merge_known(@tarpit_defaults, opts, fn _key, value -> is_integer(value) and value >= 0 end)
   end
 
   defp validate(:ipv4_prefix, length, _config) when length in 8..32, do: {:ok, length}

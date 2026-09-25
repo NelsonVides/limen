@@ -11,7 +11,7 @@ defmodule Limen.Owner do
 
   use GenServer
 
-  alias Limen.{DecisionLog, Instance, State, Stats}
+  alias Limen.{DecisionLog, Instance, Lists, State, Stats, Tarpit}
   alias Limen.Signal.UserAgent
 
   @doc false
@@ -33,8 +33,11 @@ defmodule Limen.Owner do
         supervisor: supervisor,
         stats: Stats.new(),
         log: DecisionLog.new(config),
-        state: State.new(config)
+        state: State.new(config),
+        tarpit: Tarpit.new()
       })
+
+      Lists.load(name, config.lists)
 
       {:ok, name}
     end
@@ -53,5 +56,8 @@ defmodule Limen.Owner do
   end
 
   @impl true
-  def terminate(_reason, name), do: Instance.unpublish(name)
+  def terminate(_reason, name) do
+    Lists.clear(name)
+    Instance.unpublish(name)
+  end
 end

@@ -17,7 +17,7 @@ defmodule Limen.Bench.Scenarios do
 
   import Plug.Test
 
-  alias Limen.{Context, Signal}
+  alias Limen.{Context, Policy, Signal}
   alias Limen.Signal.HttpShape
   alias Limen.State.{BanList, Gcra, Window}
 
@@ -46,11 +46,17 @@ defmodule Limen.Bench.Scenarios do
   def all do
     state()
     |> Map.merge(plug())
-    |> Map.new(fn {name, {fun, config}} ->
-      {name,
-       {fn instance -> repeat(fun, instance, @batch) end,
-        before_scenario: fn _input -> restart(config) end}}
+    |> Map.new(fn
+      {name, {fun, config}} -> {name, job(fun, config, & &1)}
+      {name, {fun, config, prepare}} -> {name, job(fun, config, prepare)}
     end)
+  end
+
+  # A scenario's operation receives the fresh instance, or what its optional
+  # `prepare` function builds from it.
+  defp job(fun, config, prepare) do
+    {fn input -> repeat(fun, input, @batch) end,
+     before_scenario: fn _input -> prepare.(restart(config)) end}
   end
 
   @doc """
@@ -110,15 +116,41 @@ defmodule Limen.Bench.Scenarios do
       |> Map.put(:scheme, :https)
       |> Map.put(:req_headers, chrome_headers())
 
+    collect = fn instance ->
+      ctx = Signal.identify(Context.from_conn(chrome, instance), instance.config)
+      Signal.collect(ctx, Signal.defaults())
+    end
+
+    # Clients rotate through a pool large enough that none of them hits the
+    # default policy's flood limit, so every call takes the full path.
+    pool = List.to_tuple(for n <- 1..20_000, do: with_client(chrome, n))
+    counter = :counters.new(1, [:write_concurrency])
+
+    next_client = fn ->
+      :counters.add(counter, 1, 1)
+      elem(pool, rem(:counters.get(counter, 1), tuple_size(pool)))
+    end
+
     %{
-      "plug: dry-run, default signals, chrome via proxy" =>
-        {fn _instance -> Limen.Plug.call(chrome, opts) end, proxied},
+      "plug: dry-run, default policy, chrome via proxy" =>
+        {fn _instance -> Limen.Plug.call(next_client.(), opts) end, proxied},
+      "policy: evaluate default, chrome" =>
+        {fn ctx -> Policy.evaluate(Policy.Default, ctx) end, proxied, collect},
       "signals: identity via proxy" =>
         {fn instance -> Signal.identify(Context.from_conn(chrome, instance), instance.config) end,
          proxied},
       "signals: http shape, chrome" =>
         {fn instance -> HttpShape.collect(Context.from_conn(chrome, instance)) end, []}
     }
+  end
+
+  defp with_client(conn, n) do
+    address = "203.0.#{div(n, 256)}.#{rem(n, 256)}"
+
+    headers =
+      List.keyreplace(conn.req_headers, "x-forwarded-for", 0, {"x-forwarded-for", address})
+
+    %{conn | req_headers: headers}
   end
 
   defp chrome_headers do

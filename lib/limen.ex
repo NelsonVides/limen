@@ -54,13 +54,17 @@ defmodule Limen do
       DecisionLog.Flusher,
       Instance,
       IP,
+      Lists,
       Plug,
       State,
       {State, []},
+      Policy,
+      {Policy, []},
       Signal,
       {Signal, []},
       Stats,
       Supervisor,
+      Tarpit,
       Telemetry
     ]
 

@@ -32,6 +32,7 @@ defmodule Limen.Context do
           query: String.t(),
           headers: [{String.t(), String.t()}],
           now: integer(),
+          monotonic: integer(),
           signals: %{optional(atom()) => term()},
           evidence: %{optional(atom()) => term()},
           rates: %{optional(term()) => non_neg_integer() | tuple()}
@@ -51,6 +52,7 @@ defmodule Limen.Context do
             query: "",
             headers: [],
             now: 0,
+            monotonic: 0,
             signals: %{},
             evidence: %{},
             rates: %{}
@@ -58,9 +60,14 @@ defmodule Limen.Context do
   @doc """
   Builds a context for `instance` from a `Plug.Conn`, without resolving
   identity.
+
+  `now` is the system time in milliseconds, used for time windows and token
+  expiry; `monotonic` is monotonic time in microseconds, used for limits.
+  Tests can pin both with the `:limen_now` and `:limen_monotonic` private
+  connection fields.
   """
   @spec from_conn(Plug.Conn.t(), Limen.Instance.t() | nil) :: t()
-  def from_conn(%Plug.Conn{} = conn, instance \\ nil) do
+  def from_conn(%Plug.Conn{private: private} = conn, instance \\ nil) do
     %__MODULE__{
       instance: instance,
       peer_ip: conn.remote_ip,
@@ -71,7 +78,9 @@ defmodule Limen.Context do
       path: conn.request_path,
       query: conn.query_string,
       headers: conn.req_headers,
-      now: System.system_time(:millisecond)
+      now: Map.get_lazy(private, :limen_now, fn -> System.system_time(:millisecond) end),
+      monotonic:
+        Map.get_lazy(private, :limen_monotonic, fn -> System.monotonic_time(:microsecond) end)
     }
   end
 
