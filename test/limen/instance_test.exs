@@ -2,7 +2,12 @@ defmodule Limen.InstanceTest do
   # Sets application environment.
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Limen.Instance
+
+  # Instances started here have no secret key and warn about it.
+  @moduletag :capture_log
 
   setup do
     on_exit(fn -> Application.delete_env(:limen_test_app, Limen) end)
@@ -46,6 +51,19 @@ defmodule Limen.InstanceTest do
     refute Instance.get(:limen_test_stopped)
 
     assert_raise ArgumentError, ~r/is not running/, fn -> Instance.fetch!(:limen_test_stopped) end
+  end
+
+  test "warns when it has to generate a secret key" do
+    log = capture_log(fn -> start_supervised!({Limen, name: :limen_test_generated}) end)
+    assert log =~ "Limen instance :limen_test_generated has no :secret_key"
+    assert Instance.fetch!(:limen_test_generated).config.keys.generated
+
+    secret = String.duplicate("s", 32)
+    config = [secret_key: secret]
+
+    assert capture_log(fn ->
+             start_supervised!({Limen, name: :limen_test_configured, config: config})
+           end) == ""
   end
 
   test "invalid options fail at startup" do

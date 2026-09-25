@@ -26,7 +26,7 @@ defmodule Limen.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :crypto]
+      extra_applications: [:logger, :crypto, :eex]
     ]
   end
 
@@ -86,7 +86,16 @@ defmodule Limen.MixProject do
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       groups_for_modules: [
         Gate: [Limen, Limen.Plug, Limen.Context, Limen.Decision, Limen.Decision.Match],
-        Configuration: [Limen.Config, Limen.Lists],
+        Configuration: [Limen.Config, Limen.Config.Keys, Limen.Lists],
+        Challenge: [
+          Limen.Challenge,
+          Limen.Challenge.Token,
+          Limen.Challenge.Pass,
+          Limen.Challenge.Replay,
+          Limen.Challenge.Replay.Rotator,
+          Limen.Challenge.Page,
+          Limen.Challenge.Assets
+        ],
         Policies: [
           Limen.Policy,
           Limen.Policy.Default,
@@ -101,7 +110,12 @@ defmodule Limen.MixProject do
           Limen.State.Rotator,
           Limen.State.Sweeper
         ],
-        Sketches: [Limen.Sketch, Limen.Sketch.CountMin],
+        Sketches: [
+          Limen.Sketch,
+          Limen.Sketch.CountMin,
+          Limen.Sketch.Bloom,
+          Limen.Sketch.RotatingBloom
+        ],
         Signals: [
           Limen.Signal,
           Limen.Signal.ClientIP,

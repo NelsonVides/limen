@@ -23,10 +23,12 @@
              files: %{
                included: ["lib/"],
                excluded: [
+                 "lib/limen/owner.ex",
                  "lib/limen/decision_log/flusher.ex",
                  "lib/limen/state/rotator.ex",
                  "lib/limen/state/sweeper.ex",
-                 "lib/limen/signal/asn/loader.ex"
+                 "lib/limen/signal/asn/loader.ex",
+                 "lib/limen/challenge/replay/rotator.ex"
                ]
              }
            ]},
@@ -125,7 +127,8 @@
           {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
           {Credo.Check.Warning.IExPry, []},
           {Credo.Check.Warning.IoInspect, []},
-          {Credo.Check.Warning.LeakyEnvironment, []},
+          # Tests run local tools (node, browsers) and need the environment.
+          {Credo.Check.Warning.LeakyEnvironment, [files: %{excluded: ["test/"]}]},
           {Credo.Check.Warning.MapGetUnsafePass, []},
           {Credo.Check.Warning.MissedMetadataKeyInLoggerConfig, []},
           {Credo.Check.Warning.MixEnv, [files: %{excluded: ["mix.exs"]}]},

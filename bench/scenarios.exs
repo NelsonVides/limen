@@ -17,6 +17,7 @@ defmodule Limen.Bench.Scenarios do
 
   import Plug.Test
 
+  alias Limen.Challenge.{Pass, Token}
   alias Limen.{Context, Policy, Signal}
   alias Limen.Signal.HttpShape
   alias Limen.State.{BanList, Gcra, Window}
@@ -68,6 +69,8 @@ defmodule Limen.Bench.Scenarios do
       :ok = DynamicSupervisor.terminate_child(__MODULE__, pid)
     end
 
+    config = Keyword.put_new(config, :secret_key, String.duplicate("bench", 8))
+
     {:ok, _pid} =
       DynamicSupervisor.start_child(__MODULE__, {Limen, name: @instance, config: config})
 
@@ -105,10 +108,9 @@ defmodule Limen.Bench.Scenarios do
     }
   end
 
-  defp plug do
-    opts = Limen.Plug.init(instance: @instance)
-    proxied = [trusted_proxies: ["10.0.0.0/8"], client_ip_header: "x-forwarded-for"]
+  @proxied [trusted_proxies: ["10.0.0.0/8"], client_ip_header: "x-forwarded-for"]
 
+  defp plug do
     chrome =
       :get
       |> conn("/articles/42")
@@ -116,10 +118,15 @@ defmodule Limen.Bench.Scenarios do
       |> Map.put(:scheme, :https)
       |> Map.put(:req_headers, chrome_headers())
 
-    collect = fn instance ->
-      ctx = Signal.identify(Context.from_conn(chrome, instance), instance.config)
-      Signal.collect(ctx, Signal.defaults())
+    identify = fn instance ->
+      Signal.identify(Context.from_conn(chrome, instance), instance.config)
     end
+
+    Map.merge(requests(chrome, identify), components(chrome, identify))
+  end
+
+  defp requests(chrome, identify) do
+    opts = Limen.Plug.init(instance: @instance)
 
     # Clients rotate through a pool large enough that none of them hits the
     # default policy's flood limit, so every call takes the full path.
@@ -131,14 +138,41 @@ defmodule Limen.Bench.Scenarios do
       elem(pool, rem(:counters.get(counter, 1), tuple_size(pool)))
     end
 
+    with_pass = fn instance ->
+      {pass, _ttl} = Pass.issue(identify.(instance))
+      Plug.Conn.put_req_header(chrome, "cookie", "_ga=GA1.1.1; _limen_pass=" <> pass)
+    end
+
     %{
+      "plug: pass fast path, chrome via proxy" =>
+        {fn conn -> Limen.Plug.call(conn, opts) end, @proxied, with_pass},
       "plug: dry-run, default policy, chrome via proxy" =>
-        {fn _instance -> Limen.Plug.call(next_client.(), opts) end, proxied},
+        {fn _instance -> Limen.Plug.call(next_client.(), opts) end, @proxied}
+    }
+  end
+
+  defp components(chrome, identify) do
+    collect = fn instance -> Signal.collect(identify.(instance), Signal.defaults()) end
+
+    with_pass = fn instance ->
+      identity = identify.(instance)
+      {pass, _ttl} = Pass.issue(identity)
+      {pass, identity}
+    end
+
+    with_token = fn instance ->
+      identity = identify.(instance)
+      {Token.issue(identity, 16), identity}
+    end
+
+    %{
+      "challenge: verify pass cookie" =>
+        {fn {pass, identity} -> Pass.verify(pass, identity) end, [], with_pass},
+      "challenge: verify token" =>
+        {fn {token, identity} -> Token.verify(token, identity) end, [], with_token},
       "policy: evaluate default, chrome" =>
-        {fn ctx -> Policy.evaluate(Policy.Default, ctx) end, proxied, collect},
-      "signals: identity via proxy" =>
-        {fn instance -> Signal.identify(Context.from_conn(chrome, instance), instance.config) end,
-         proxied},
+        {fn ctx -> Policy.evaluate(Policy.Default, ctx) end, @proxied, collect},
+      "signals: identity via proxy" => {identify, @proxied},
       "signals: http shape, chrome" =>
         {fn instance -> HttpShape.collect(Context.from_conn(chrome, instance)) end, []}
     }

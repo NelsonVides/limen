@@ -44,7 +44,7 @@ defmodule Limen do
   """
 
   use Boundary,
-    deps: [Logger, Plug],
+    deps: [EEx, Logger, Plug, Plug.Crypto],
     exports: [
       Config,
       Context,
@@ -54,6 +54,8 @@ defmodule Limen do
       DecisionLog.Flusher,
       Instance,
       IP,
+      Challenge,
+      {Challenge, []},
       Lists,
       Plug,
       State,

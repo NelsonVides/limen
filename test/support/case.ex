@@ -20,7 +20,10 @@ defmodule Limen.Case do
   end
 
   # Decisions are only logged by the tests that check logging.
-  @defaults [decision_log: [non_allow_sample_rate: 0.0]]
+  @defaults [
+    decision_log: [non_allow_sample_rate: 0.0],
+    secret_key: String.duplicate("limen-test-secret", 2)
+  ]
 
   setup context do
     name = :"limen_test_#{System.unique_integer([:positive])}"

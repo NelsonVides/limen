@@ -55,6 +55,15 @@ defmodule Limen.Test.Policies do
     end
   end
 
+  defmodule Challenging do
+    @moduledoc false
+    use Limen.Policy, signals: [], mode: :enforce
+
+    decide do
+      true -> {:challenge, difficulty: 8}
+    end
+  end
+
   defmodule Login do
     @moduledoc false
     use Limen.Policy, signals: []

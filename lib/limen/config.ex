@@ -14,6 +14,14 @@ defmodule Limen.Config do
 
   ## Options
 
+    * `:secret_key` - at least 32 random bytes, used to sign challenge tokens
+      and pass cookies. Every node serving the same site needs the same key.
+      Without one, a random key is generated at startup and a warning is
+      logged. Set it from `config/runtime.exs`, never in compiled config.
+
+    * `:previous_secret_keys` - earlier secret keys, still accepted when
+      verifying tokens, for rotating the secret.
+
     * `:mode` - `:dry_run` (default) or `:enforce`. In dry-run mode every
       decision is computed, recorded and emitted exactly as in enforce mode,
       but the request always continues. Routes and policies can override it.
@@ -57,6 +65,21 @@ defmodule Limen.Config do
         as those added by your proxies. Forwarding headers and the JA4 header
         are always left out.
 
+    * `:challenge` - the proof-of-work challenge, see `Limen.Challenge`:
+      * `:path` - where Limen serves its challenge endpoints. Defaults to
+        `"/__limen"`.
+      * `:ttl` - seconds a challenge stays valid. Defaults to `300`.
+      * `:pass_ttl` - seconds a pass cookie stays valid. Defaults to `3_600`.
+      * `:cookie` - the pass cookie name. Defaults to `"_limen_pass"`.
+      * `:status` - HTTP status of the challenge page. Defaults to `403`.
+      * `:no_js` - what clients without JavaScript get: `{:meta_refresh,
+        seconds}` (default `{:meta_refresh, 5}`) lets them through after
+        waiting, `:deny` shows a message asking to enable JavaScript.
+      * `:secure_cookie` - `true`, `false` or `:auto` (default, secure over
+        HTTPS).
+      * `:replay_capacity` - solved challenges remembered per `:ttl` to
+        reject replays. Defaults to `100_000`.
+
     * `:tarpit` - limits on tarpitted requests, see `Limen.Tarpit`:
       * `:max_concurrent` - requests held at once. Defaults to `1_000`.
       * `:max_delay` - longest delay in milliseconds. Defaults to `30_000`.
@@ -80,6 +103,8 @@ defmodule Limen.Config do
 
   use Boundary, type: :strict, deps: [Limen.IP, Logger]
 
+  alias Limen.Config.Keys
+
   @decision_log_defaults %{
     sample_rate: 0.0,
     non_allow_sample_rate: 1.0,
@@ -102,8 +127,20 @@ defmodule Limen.Config do
 
   @tarpit_defaults %{max_concurrent: 1_000, max_delay: 30_000}
 
+  @challenge_defaults %{
+    path: "/__limen",
+    ttl: 300,
+    pass_ttl: 3_600,
+    cookie: "_limen_pass",
+    status: 403,
+    no_js: {:meta_refresh, 5},
+    secure_cookie: :auto,
+    replay_capacity: 100_000
+  }
+
   @defaults %{
     mode: :dry_run,
+    challenge: Map.put(@challenge_defaults, :segments, ["__limen"]),
     trusted_proxies: %{lengths: %{}, members: %{}},
     client_ip_header: nil,
     ja4_header: "x-ja4",
@@ -147,13 +184,23 @@ defmodule Limen.Config do
   """
   @spec build(keyword()) :: t()
   def build(opts) do
-    Enum.reduce(opts, @defaults, fn {key, value}, acc -> put(acc, key, value) end)
+    {secrets, opts} = Keyword.split(opts, [:secret_key, :previous_secret_keys])
+    secret = Keyword.get(secrets, :secret_key)
+    keys = keys!(secret, Keyword.get(secrets, :previous_secret_keys, []))
+
+    Enum.reduce(opts, Map.put(@defaults, :keys, keys), fn {key, value}, acc ->
+      put(acc, key, value)
+    end)
   end
 
   @doc """
   Validates and sets one option.
   """
   @spec put(t(), atom(), term()) :: t()
+  def put(_config, key, _value) when key in [:secret_key, :previous_secret_keys, :keys] do
+    raise ArgumentError, "secret keys cannot be changed at runtime, restart the instance instead"
+  end
+
   def put(config, key, value) do
     case validate(key, value, config) do
       {:ok, value} -> Map.put(config, key, value)
@@ -164,6 +211,14 @@ defmodule Limen.Config do
   @doc false
   @spec defaults() :: t()
   def defaults, do: @defaults
+
+  defp keys!(secret, previous) do
+    for key <- [secret | previous], key != nil, not (is_binary(key) and byte_size(key) >= 32) do
+      raise ArgumentError, "invalid secret key: expected a binary of at least 32 bytes"
+    end
+
+    Keys.derive(secret, previous)
+  end
 
   defp validate(:mode, mode, _config) when mode in [:dry_run, :enforce], do: {:ok, mode}
   defp validate(:mode, _mode, _config), do: {:error, "expected :dry_run or :enforce"}
@@ -214,6 +269,12 @@ defmodule Limen.Config do
     e in ArgumentError -> {:error, Exception.message(e)}
   end
 
+  defp validate(:challenge, opts, _config) when is_list(opts) do
+    with {:ok, challenge} <- merge_known(@challenge_defaults, opts, &valid_challenge?/2) do
+      {:ok, Map.put(challenge, :segments, String.split(challenge.path, "/", trim: true))}
+    end
+  end
+
   defp validate(:tarpit, opts, _config) when is_list(opts) do
     merge_known(@tarpit_defaults, opts, fn _key, value -> is_integer(value) and value >= 0 end)
   end
@@ -250,6 +311,18 @@ defmodule Limen.Config do
     do: {:error, "invalid value #{inspect(value)}"}
 
   defp validate(key, _value, _config), do: {:error, "unknown option #{inspect(key)}"}
+
+  defp valid_challenge?(:path, "/" <> _rest = path), do: not String.ends_with?(path, "/")
+  defp valid_challenge?(:cookie, name), do: is_binary(name) and name =~ ~r/^[A-Za-z0-9_-]+$/
+  defp valid_challenge?(:status, status), do: status in 200..599
+  defp valid_challenge?(:no_js, :deny), do: true
+  defp valid_challenge?(:no_js, {:meta_refresh, s}), do: is_integer(s) and s >= 0
+  defp valid_challenge?(:secure_cookie, secure), do: secure in [true, false, :auto]
+
+  defp valid_challenge?(key, value) when key in [:ttl, :pass_ttl, :replay_capacity],
+    do: is_integer(value) and value > 0
+
+  defp valid_challenge?(_key, _value), do: false
 
   @doc false
   @spec merge_known(map(), keyword(), (atom(), term() -> boolean())) ::

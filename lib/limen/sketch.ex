@@ -11,7 +11,9 @@ defmodule Limen.Sketch do
   process without locks, and are allocated once up front.
 
     * `Limen.Sketch.CountMin` - frequency estimates that never undercount.
+    * `Limen.Sketch.Bloom` - set membership with no false negatives.
+    * `Limen.Sketch.RotatingBloom` - "seen recently", in two generations.
   """
 
-  use Boundary, type: :strict, deps: [], exports: [CountMin]
+  use Boundary, type: :strict, deps: [], exports: [Bloom, CountMin, RotatingBloom]
 end

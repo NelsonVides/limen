@@ -52,6 +52,8 @@ defmodule Limen.PlugTest do
       assert %Decision{action: :deny, mode: :dry_run, enforced: false} = Limen.decision(conn)
     end
 
+    # The other instance warns that it has no secret key.
+    @tag :capture_log
     test "bans are per instance", %{limen: limen} do
       start_supervised!({Limen, name: :limen_plug_other_instance})
       Limen.ban(limen, {127, 0, 0, 1}, 60)

@@ -24,7 +24,8 @@ defmodule Limen.Supervisor do
       {Limen.DecisionLog.Flusher, name},
       {Limen.State.Rotator, name},
       {Limen.State.Sweeper, name},
-      {Limen.Signal.Asn.Loader, name}
+      {Limen.Signal.Asn.Loader, name},
+      {Limen.Challenge.Replay.Rotator, name}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)

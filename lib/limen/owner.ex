@@ -11,8 +11,11 @@ defmodule Limen.Owner do
 
   use GenServer
 
+  alias Limen.Challenge.Replay
   alias Limen.{DecisionLog, Instance, Lists, State, Stats, Tarpit}
   alias Limen.Signal.UserAgent
+
+  require Logger
 
   @doc false
   @spec start_link({atom(), Limen.Config.t(), pid()}) :: GenServer.on_start()
@@ -34,8 +37,16 @@ defmodule Limen.Owner do
         stats: Stats.new(),
         log: DecisionLog.new(config),
         state: State.new(config),
-        tarpit: Tarpit.new()
+        tarpit: Tarpit.new(),
+        replay: Replay.new(config)
       })
+
+      if config.keys.generated do
+        Logger.warning(
+          "Limen instance #{inspect(name)} has no :secret_key and generated one: challenge " <>
+            "passes will not survive restarts or work across nodes"
+        )
+      end
 
       Lists.load(name, config.lists)
 
