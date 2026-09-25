@@ -82,7 +82,6 @@ jobs:
           path: |
             deps
             _build
-            priv/plts
           key: ${{ runner.os }}-dialyzer-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('mix.lock') }}
       - run: mix deps.get
       - run: mix dialyzer --plt

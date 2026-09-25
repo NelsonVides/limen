@@ -77,7 +77,7 @@ defmodule Limen.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files: ~w(lib priv/static mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 
@@ -86,7 +86,17 @@ defmodule Limen.MixProject do
       main: "readme",
       source_url: @source_url,
       source_ref: "v#{@version}",
-      extras: ["README.md", "CHANGELOG.md", "LICENSE"],
+      extras: [
+        "README.md",
+        "guides/getting-started.md",
+        "guides/concepts.md",
+        "guides/dry-run-rollout.md",
+        "guides/nginx-ja4.md",
+        "guides/tuning.md",
+        "CHANGELOG.md",
+        "LICENSE"
+      ],
+      groups_for_extras: [Guides: ~r"guides/"],
       groups_for_modules: [
         Gate: [
           Limen,
@@ -98,6 +108,7 @@ defmodule Limen.MixProject do
           Limen.Decision.Match
         ],
         Cluster: [Limen.Cluster],
+        Instances: [Limen.Instance, Limen.Supervisor, Limen.Owner],
         Configuration: [Limen.Config, Limen.Config.Keys, Limen.Lists],
         Challenge: [
           Limen.Challenge,
@@ -159,8 +170,8 @@ defmodule Limen.MixProject do
   defp dialyzer do
     [
       plt_add_apps: [:mix, :ex_unit],
-      plt_local_path: "priv/plts",
-      plt_core_path: "priv/plts",
+      plt_local_path: "_build/dialyzer",
+      plt_core_path: "_build/dialyzer",
       flags: [:unmatched_returns, :error_handling, :extra_return, :missing_return]
     ]
   end

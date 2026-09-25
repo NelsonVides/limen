@@ -20,9 +20,33 @@ as the `benchmarks` artifact on every run.
 
 ## Baselines
 
-### M1: state layer
+Apple M4 Pro (14 cores), Elixir 1.20.4, OTP 29.1.1, 2 s per scenario. The
+plug scenarios resolve a Chrome client behind a trusted proxy with a JA4
+header; the full path rotates through 20,000 clients so none of them hits a
+limit, and evaluates `Limen.Policy.Default` with its default signals.
 
-Apple M4 Pro (14 cores), Elixir 1.20.4, OTP 29.1.1, 2 s per scenario.
+### 0.1.0
+
+| Scenario | Median | p99 |
+|---|---|---|
+| state: ban lookup, miss | 54 ns | 95 ns |
+| state: gcra check | 127 ns | 167 ns |
+| state: window count | 130 ns | 185 ns |
+| state: window incr, hot key | 141 ns | 182 ns |
+| state: window incr, flood of unique keys | 384 ns | 589 ns |
+| policy: evaluate default, chrome | 604 ns | 725 ns |
+| signals: identity via proxy | 1.01 µs | 1.42 µs |
+| challenge: verify pass cookie | 1.17 µs | 1.44 µs |
+| challenge: verify token | 1.22 µs | 1.47 µs |
+| signals: http shape, chrome | 1.95 µs | 2.27 µs |
+| plug: pass fast path, chrome via proxy | 4.07 µs | 5.24 µs |
+| plug: dry-run, default policy, chrome via proxy | 9.03 µs | 16.54 µs |
+
+The flood scenario counts a new key on every call with the exact tables
+capped at 1,000 keys, so almost every call takes the saturated path: a
+membership check plus a Count-Min Sketch update.
+
+### M1: state layer
 
 | Scenario | Median | p99 |
 |---|---|---|
@@ -32,24 +56,3 @@ Apple M4 Pro (14 cores), Elixir 1.20.4, OTP 29.1.1, 2 s per scenario.
 | state: window count | 141 ns | 198 ns |
 | state: window incr, flood of unique keys | 373 ns | 478 ns |
 | plug: dry-run, no signals | 390 ns | 528 ns |
-
-The flood scenario counts a new key on every call with the exact tables
-capped at 1,000 keys, so almost every call takes the saturated path: a
-membership check plus a Count-Min Sketch update.
-
-### M2: signals
-
-Same machine. The plug scenario resolves the client behind a trusted proxy,
-reads the JA4 header, tracks behaviour and collects the default signals for a
-Chrome navigation; there is no policy yet, so nothing is scored.
-
-| Scenario | Median | p99 |
-|---|---|---|
-| state: ban lookup, miss | 53 ns | 94 ns |
-| state: gcra check | 121 ns | 178 ns |
-| state: window count | 134 ns | 197 ns |
-| state: window incr, hot key | 138 ns | 205 ns |
-| state: window incr, flood of unique keys | 376 ns | 478 ns |
-| signals: identity via proxy | 953 ns | 1.18 µs |
-| signals: http shape, chrome | 1.93 µs | 2.3 µs |
-| plug: dry-run, default signals, chrome via proxy | 6.83 µs | 8.5 µs |
