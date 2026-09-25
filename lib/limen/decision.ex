@@ -26,6 +26,8 @@ defmodule Limen.Decision do
   thresholds), or `:socket` (a WebSocket or LiveView connection check).
   """
 
+  use Boundary, type: :strict, deps: [Limen.IP], exports: [Match]
+
   alias Limen.Decision.Match
 
   @type action :: :allow | :challenge | :throttle | :deny | :tarpit
@@ -117,7 +119,7 @@ defmodule Limen.Decision do
   end
 
   def normalize({:challenge, %{} = params}) do
-    difficulty = params |> Map.get(:difficulty, 16) |> max(1) |> min(32)
+    difficulty = min(max(Map.get(params, :difficulty, 16), 1), 32)
     {:challenge, Map.put(params, :difficulty, difficulty)}
   end
 
@@ -199,6 +201,6 @@ defmodule Limen.Decision do
 
   defp format_value(:prefix, prefix), do: Limen.IP.prefix_to_string(prefix)
   defp format_value(:client_ip, ip), do: to_string(:inet.ntoa(ip))
-  defp format_value(_, value) when is_binary(value), do: value
-  defp format_value(_, value), do: inspect(value)
+  defp format_value(_key, value) when is_binary(value), do: value
+  defp format_value(_key, value), do: inspect(value)
 end

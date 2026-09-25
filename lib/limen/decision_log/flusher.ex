@@ -39,27 +39,28 @@ defmodule Limen.DecisionLog.Flusher do
   @impl true
   def terminate(_reason, state), do: flush_now(state)
 
-  defp flush_now(%{name: name, flushed: flushed} = state) do
+  defp flush_now(%{name: name} = state) do
     case Instance.get(name) do
-      nil ->
-        state
-
-      instance ->
-        {entries, dropped, last} = DecisionLog.since(instance, flushed)
-        level = instance.config.decision_log.level
-
-        if dropped > 0 do
-          Logger.warning(
-            "Limen decision log of #{inspect(name)} overflowed, #{dropped} entries dropped"
-          )
-        end
-
-        Enum.each(entries, fn decision ->
-          Logger.log(level, fn -> DecisionLog.report(decision) end)
-        end)
-
-        %{state | flushed: last}
+      nil -> state
+      instance -> drain(instance, state)
     end
+  end
+
+  defp drain(instance, %{flushed: flushed} = state) do
+    {entries, dropped, last} = DecisionLog.since(instance, flushed)
+    level = instance.config.decision_log.level
+
+    if dropped > 0 do
+      Logger.warning(
+        "Limen decision log of #{inspect(instance.name)} overflowed, #{dropped} entries dropped"
+      )
+    end
+
+    Enum.each(entries, fn decision ->
+      Logger.log(level, fn -> DecisionLog.report(decision) end)
+    end)
+
+    %{state | flushed: last}
   end
 
   defp schedule(name) do

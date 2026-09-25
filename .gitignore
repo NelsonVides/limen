@@ -10,6 +10,7 @@ erl_crash.dump
 *.ez
 limen-*.tar
 /tmp/
+/priv/plts/
 
 # Benchmark output (baselines are produced in CI, not committed)
 /bench/output/

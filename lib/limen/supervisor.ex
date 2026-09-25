@@ -1,4 +1,4 @@
-defmodule Limen.Instance.Supervisor do
+defmodule Limen.Supervisor do
   @moduledoc """
   Supervises one Limen instance.
 
@@ -20,7 +20,7 @@ defmodule Limen.Instance.Supervisor do
   @impl true
   def init({name, config}) do
     children = [
-      {Limen.Instance.Owner, {name, config, self()}},
+      {Limen.Owner, {name, config, self()}},
       {Limen.DecisionLog.Flusher, name}
     ]
 

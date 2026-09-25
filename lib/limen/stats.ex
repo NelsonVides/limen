@@ -7,6 +7,8 @@ defmodule Limen.Stats do
   snapshot that callers can diff over time to compute rates.
   """
 
+  use Boundary, type: :strict, deps: [Limen.Instance]
+
   alias Limen.Instance
 
   @names [

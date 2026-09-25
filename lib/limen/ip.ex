@@ -11,6 +11,8 @@ defmodule Limen.IP do
   are cheap to hash, compare and use as ETS keys.
   """
 
+  use Boundary, type: :strict, deps: []
+
   import Bitwise
 
   @type version :: 4 | 6
@@ -33,7 +35,7 @@ defmodule Limen.IP do
   def parse(string) when is_binary(string) do
     case :inet.parse_strict_address(String.to_charlist(String.trim(string))) do
       {:ok, ip} -> {:ok, ip}
-      {:error, _} -> :error
+      {:error, _reason} -> :error
     end
   end
 
@@ -117,7 +119,7 @@ defmodule Limen.IP do
          {:ok, length} <- parse_length(rest, bits) do
       {:ok, {version, mask(n, bits, length), length}}
     else
-      _ -> :error
+      _invalid -> :error
     end
   end
 
@@ -126,7 +128,7 @@ defmodule Limen.IP do
   defp parse_length([string], bits) do
     case Integer.parse(string) do
       {length, ""} when length >= 0 and length <= bits -> {:ok, length}
-      _ -> :error
+      _invalid -> :error
     end
   end
 
@@ -176,7 +178,7 @@ defmodule Limen.IP do
     lengths
     |> Map.get(version, [])
     |> Enum.any?(fn length ->
-      members |> Map.fetch!({version, length}) |> Map.has_key?(mask(n, bits, length))
+      Map.has_key?(Map.fetch!(members, {version, length}), mask(n, bits, length))
     end)
   end
 

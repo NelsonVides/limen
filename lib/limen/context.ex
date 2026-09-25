@@ -13,6 +13,8 @@ defmodule Limen.Context do
   values that produced it.
   """
 
+  use Boundary, type: :strict, deps: [Limen.Instance, Limen.IP, Plug]
+
   @type prefix :: Limen.IP.prefix()
 
   @type t :: %__MODULE__{
@@ -81,7 +83,7 @@ defmodule Limen.Context do
   @spec header(t(), String.t()) :: String.t() | nil
   def header(%__MODULE__{headers: headers}, name) do
     case List.keyfind(headers, name, 0) do
-      {_, value} -> value
+      {_name, value} -> value
       nil -> nil
     end
   end

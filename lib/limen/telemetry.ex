@@ -39,6 +39,8 @@ defmodule Limen.Telemetry do
       * Metadata: `:ip`, `:result`, `:host`.
   """
 
+  use Boundary, type: :strict, deps: []
+
   @doc false
   @spec decision(Limen.Decision.t(), Plug.Conn.t() | nil) :: :ok
   def decision(decision, conn) do

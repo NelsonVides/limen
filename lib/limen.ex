@@ -43,6 +43,23 @@ defmodule Limen do
   Start with `Limen.Plug` and the options in `Limen.Config`.
   """
 
+  use Boundary,
+    deps: [Logger, Plug],
+    exports: [
+      Config,
+      Context,
+      Decision,
+      Decision.Match,
+      DecisionLog,
+      DecisionLog.Flusher,
+      Instance,
+      IP,
+      Plug,
+      Stats,
+      Supervisor,
+      Telemetry
+    ]
+
   alias Limen.Instance
 
   @type instance :: atom()
@@ -57,13 +74,13 @@ defmodule Limen do
       {{:ok, app}, :error} ->
         children =
           for {name, config} <- Limen.Config.from_app(app) do
-            Supervisor.child_spec({Instance.Supervisor, name: name, config: config}, id: name)
+            Supervisor.child_spec({Limen.Supervisor, name: name, config: config}, id: name)
           end
 
         Supervisor.start_link(children, strategy: :one_for_one)
 
       {:error, {:ok, name}} when is_atom(name) ->
-        Instance.Supervisor.start_link(name: name, config: Keyword.get(opts, :config, []))
+        Limen.Supervisor.start_link(name: name, config: Keyword.get(opts, :config, []))
 
       _invalid ->
         raise ArgumentError,

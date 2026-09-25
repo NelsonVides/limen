@@ -7,7 +7,7 @@ requests, rate-limits, challenges and blocks automated traffic entirely inside
 the BEAM: no sidecar, no external service, all state in ETS, `:atomics` and
 `:persistent_term`.
 
-> Limen is under active development. See [PLAN.md](PLAN.md) for the roadmap.
+> Limen is under active development. The roadmap lives in `PLAN.md` at the root of the repository.
 
 ## Installation
 

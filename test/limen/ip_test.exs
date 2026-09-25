@@ -48,8 +48,8 @@ defmodule Limen.IPTest do
         ip = List.to_tuple(parts)
 
         case IP.to_integer(ip) do
-          {6, _} = n -> assert IP.from_integer(n) == ip
-          {4, _} -> assert match?([0, 0, 0, 0, 0, 0xFFFF | _], parts)
+          {6, _n} = n -> assert IP.from_integer(n) == ip
+          {4, _n} -> assert match?([0, 0, 0, 0, 0, 0xFFFF | _rest], parts)
         end
       end
     end

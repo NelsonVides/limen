@@ -32,7 +32,7 @@ defmodule Limen.InstanceTest do
   test "instance names are unique" do
     start_supervised!({Limen, name: :limen_test_unique})
 
-    assert {:error, {{:shutdown, {:failed_to_start_child, Limen.Instance.Owner, reason}}, _spec}} =
+    assert {:error, {{:shutdown, {:failed_to_start_child, Limen.Owner, reason}}, _spec}} =
              start_supervised({Limen, name: :limen_test_unique}, id: :second)
 
     assert reason == {:already_started, :limen_test_unique}

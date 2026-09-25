@@ -16,6 +16,11 @@ defmodule Limen.DecisionLog do
   Sampling is configured with the `:decision_log` option, see `Limen.Config`.
   """
 
+  use Boundary,
+    type: :strict,
+    deps: [Limen.Config, Limen.Decision, Limen.Instance, Limen.IP, Logger],
+    exports: [Flusher]
+
   alias Limen.{Decision, Instance}
 
   @type buffer :: %{table: :ets.tid(), cursor: :atomics.atomics_ref()}

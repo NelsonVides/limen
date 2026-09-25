@@ -1,4 +1,4 @@
-defmodule Limen.Instance.Owner do
+defmodule Limen.Owner do
   @moduledoc """
   Owns an instance's tables and publishes its `Limen.Instance`.
 
