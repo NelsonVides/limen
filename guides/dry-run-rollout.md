@@ -65,6 +65,15 @@ Typical causes, and what to do:
   default policy once FCrDNS verification completes; add others by name and
   DNS suffix in the `:fcrdns` configuration.
 
+### Trap hits
+
+Honeypots (see [Honeypots and the maze](honeypots-and-maze.md)) follow the
+same rules: in dry-run a trap hit is recorded, the client's flag is stored as
+a dry-run ban, and the request continues to your application; nobody is sent
+to the maze. Before enforcing, look at who fell in: decisions at the `:trap`
+stage should be scrapers, security scanners and the odd link-prefetching
+browser extension, never your users' normal browsing.
+
 ## 4. Enforce one route first
 
 Login and signup pages are the usual first targets: little legitimate

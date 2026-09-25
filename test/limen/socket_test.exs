@@ -192,6 +192,22 @@ defmodule Limen.SocketTest do
       assert refused(limen, :not_mounted_at_router, outside) == "/"
     end
 
+    @tag config: [mode: :enforce]
+    test "keeps the connect info to check forms after mounting", %{limen: limen} do
+      socket = socket(connect_info(), %{"_limen" => page_token(limen)})
+      {:cont, mounted} = Limen.LiveView.on_mount([instance: limen], %{}, %{}, socket)
+      # Connect info is gone once mounted, as in LiveView.
+      mounted = %{mounted | private: Map.delete(mounted.private, :connect_info)}
+
+      {:safe, fields} = Limen.Trap.form_fields(limen)
+
+      [_all, token] =
+        Regex.run(~r/name="_limen_form" value="([^"]+)"/, IO.iodata_to_binary(fields))
+
+      assert {:trapped, %Limen.Decision{stage: :trap, identity: %{client_ip: {127, 0, 0, 1}}}} =
+               Limen.LiveView.check_form(mounted, %{"_limen_form" => token}, instance: limen)
+    end
+
     test "needs the instance" do
       assert_raise ArgumentError, ~r/needs the instance/, fn ->
         Limen.LiveView.on_mount(:default, %{}, %{}, socket(%{}, %{}))

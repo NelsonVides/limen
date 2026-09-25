@@ -70,6 +70,8 @@ defmodule Limen do
         Signal,
         {Signal, []},
         Socket,
+        Maze,
+        {Maze, []},
         Stats,
         Supervisor,
         Tarpit,
@@ -133,7 +135,10 @@ defmodule Limen do
   arbitrary ranges, use a policy rule with a list instead.
 
   Options are those of `Limen.State.BanList.ban/4`; `:origin` defaults to
-  `:admin`.
+  `:admin`. Pass `action: :maze` to send the client to the maze instead of
+  denying it:
+
+      Limen.ban(:my_app, "203.0.113.7", 86_400, action: :maze, reason: :scraper)
   """
   @spec ban(instance(), :inet.ip_address() | String.t() | IP.prefix(), pos_integer(), keyword()) ::
           :ok | {:error, :full}

@@ -30,8 +30,8 @@ defmodule Limen.Policy do
     1. `limit` rules are checked first, for every request the policy covers,
        including clients holding a valid pass. The first exceeded limit
        throttles the request.
-    2. `allow` and `deny` rules are checked in the order they are written; the
-       first that matches settles the request.
+    2. `allow`, `deny` and `maze` rules are checked in the order they are
+       written; the first that matches settles the request.
     3. Every `score` rule that matches adds its weight (which may be negative)
        to the score.
     4. The first `decide` clause whose condition holds picks the action. With
@@ -49,6 +49,9 @@ defmodule Limen.Policy do
     * `allow name, when: condition` - allow and stop.
     * `deny name, when: condition` - deny and stop. With `ban: seconds`, the
       prefix is also banned.
+    * `maze name, when: condition` - send the client to the maze (see
+      `Limen.Maze`) and stop. With `ban: seconds`, the prefix is also flagged,
+      so every later request goes to the maze too.
     * `score name, weight, when: condition` - add `weight` to the score.
 
   ## Conditions
@@ -74,7 +77,8 @@ defmodule Limen.Policy do
   `difficulty_for(score, opts)`, see `Limen.Policy.Runtime.difficulty_for/2`)
   maps it to a challenge difficulty. Actions are those of `Limen.Decision`,
   with options: `:deny`, `{:deny, ban: 600}`, `{:challenge, difficulty: 18}`,
-  `{:throttle, retry_after: 30}`, `{:tarpit, delay: 5_000}`.
+  `{:throttle, retry_after: 30}`, `{:tarpit, delay: 5_000}`, `:maze`,
+  `{:maze, ban: 86_400}`.
 
   ## Options
 
@@ -114,7 +118,7 @@ defmodule Limen.Policy do
   @doc false
   defmacro __using__(opts) do
     quote do
-      import Limen.Policy, only: [allow: 2, deny: 2, score: 3, limit: 2, decide: 1]
+      import Limen.Policy, only: [allow: 2, deny: 2, maze: 2, score: 3, limit: 2, decide: 1]
       Module.register_attribute(__MODULE__, :limen_rules, accumulate: true)
       Module.register_attribute(__MODULE__, :limen_limits, accumulate: true)
       Module.register_attribute(__MODULE__, :limen_decide, [])
@@ -132,6 +136,11 @@ defmodule Limen.Policy do
   Denies the request when `condition` holds, skipping scoring.
   """
   defmacro deny(name, opts), do: rule(:deny, name, 0, opts, __CALLER__)
+
+  @doc """
+  Sends the client to the maze when `condition` holds, skipping scoring.
+  """
+  defmacro maze(name, opts), do: rule(:maze, name, 0, opts, __CALLER__)
 
   @doc """
   Adds `weight` to the score when `condition` holds.
@@ -179,7 +188,7 @@ defmodule Limen.Policy do
 
     {condition, extra} = Keyword.pop(opts, :when)
 
-    allowed = if kind == :deny, do: [:ban], else: []
+    allowed = if kind in [:deny, :maze], do: [:ban], else: []
 
     unless Enum.all?(Keyword.keys(extra), &(&1 in allowed)) do
       raise CompileError,
@@ -275,7 +284,7 @@ defmodule Limen.Policy do
 
   # Rules are split once here, so that evaluating a request does not.
   defp rule_metadata(rules) do
-    {short_circuit, scored} = Enum.split_with(rules, &(&1.kind in [:allow, :deny]))
+    {short_circuit, scored} = Enum.split_with(rules, &(&1.kind in [:allow, :deny, :maze]))
     %{rules: rules, short_circuit: short_circuit, scored: scored}
   end
 
@@ -410,7 +419,7 @@ defmodule Limen.Policy do
   def evaluate(policy, %Context{} = ctx) do
     case first_match(policy, policy.__limen__(:short_circuit), ctx, []) do
       {:matched, rule, match, errors} ->
-        params = if rule.kind == :deny and rule.opts[:ban], do: %{ban: rule.opts.ban}, else: %{}
+        params = if rule.opts[:ban], do: %{ban: rule.opts.ban}, else: %{}
 
         %{
           action: rule.kind,

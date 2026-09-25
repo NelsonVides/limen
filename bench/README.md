@@ -46,6 +46,16 @@ The flood scenario counts a new key on every call with the exact tables
 capped at 1,000 keys, so almost every call takes the saturated path: a
 membership check plus a Count-Min Sketch update.
 
+### M8: honeypots and the maze
+
+Trap paths and ban actions leave the request path unchanged (every scenario
+above within noise of 0.1.0). Rendering a maze page happens once per maze
+response, which then spends seconds asleep:
+
+| Scenario | Median | p99 |
+|---|---|---|
+| maze: render page | 141 µs | 161 µs |
+
 ### M1: state layer
 
 | Scenario | Median | p99 |

@@ -38,8 +38,11 @@ defmodule Limen.Owner do
         log: DecisionLog.new(config),
         state: State.new(config),
         tarpit: Tarpit.new(),
+        maze: :atomics.new(1, []),
         replay: Replay.new(config)
       })
+
+      :ok = Limen.Maze.setup(name, config)
 
       if config.keys.generated do
         Logger.warning(
@@ -69,6 +72,7 @@ defmodule Limen.Owner do
   @impl true
   def terminate(_reason, name) do
     Lists.clear(name)
+    Limen.Maze.teardown(name)
     Instance.unpublish(name)
   end
 end

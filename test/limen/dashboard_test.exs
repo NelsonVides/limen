@@ -20,7 +20,7 @@ defmodule Limen.DashboardTest do
     assert [%{prefix: "192.0.2.1/32", requests: 5}, %{prefix: "192.0.2.2/32", requests: 2}] =
              Data.top_prefixes(limen, 10)
 
-    assert [%{prefix: "198.51.100.1/32", reason: ":manual", origin: :admin}] =
+    assert [%{prefix: "198.51.100.1/32", reason: ":manual", origin: :admin, action: :deny}] =
              Data.bans(limen, 10)
 
     assert [%{stage: :decide} | _rest] = Data.recent(limen, 3)

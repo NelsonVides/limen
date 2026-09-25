@@ -73,6 +73,11 @@ defmodule Limen.ClusterTest do
     :ok = :erpc.call(node, Limen, :ban, [@instance, "198.51.100.5", 60])
     assert %{origin: :remote} = eventually(fn -> Limen.banned(@instance, "198.51.100.5") end)
 
+    :ok = Limen.ban(@instance, "192.0.2.78", 60, action: :maze)
+
+    assert %{origin: :remote, action: :maze} =
+             eventually(fn -> :erpc.call(node, Limen, :banned, [@instance, "192.0.2.78"]) end)
+
     :ok = Limen.unban(@instance, "192.0.2.77")
 
     assert eventually(fn ->

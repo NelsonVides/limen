@@ -23,3 +23,11 @@ First release.
   Bloom filters and HyperLogLog, all with bounded memory.
 - LiveView and socket gating, cluster ban propagation and a LiveDashboard
   page.
+- Honeypots (`Limen.Trap`): trap paths behind hidden links and `robots.txt`,
+  and form traps with a decoy field and a signed timestamp, flagging the
+  clients that fall in.
+- The maze (`Limen.Maze`): endless pages written by a Markov chain model of a
+  bundled corpus and, optionally, the site's own text, seeded per site from
+  the instance secret and dripped slowly with random chunks and pauses. Bans
+  carry an action (`:deny` or `:maze`), and policies can send clients to the
+  maze with `maze` rules or `{:maze, ban: seconds}`.

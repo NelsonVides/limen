@@ -52,7 +52,7 @@ Signals only observe: they never decide or block anything.
 | Term | Meaning |
 |---|---|
 | Policy | A module written with `Limen.Policy`: the signals it needs, its rules and a `decide` block. `Limen.Policy.Default` is the built-in one. |
-| Rule | One named line of a policy: `allow`, `deny`, `score` or `limit`, with its condition in `when:`. |
+| Rule | One named line of a policy: `allow`, `deny`, `maze`, `score` or `limit`, with its condition in `when:`. |
 | Score | The sum of the weights of the matching `score` rules, so that many weak facts add up to one number. |
 | `decide` | The block that turns the score into an action, such as `score >= 150 -> :deny`. |
 | Limit | A hard cap per client, such as 100 requests a second, enforced with GCRA (`Limen.State.Gcra`). Limits are checked before any rule; exceeding one throttles. |
@@ -67,8 +67,8 @@ A limit is exact and blocks; a rate is approximate and only scores.
 | Term | Meaning |
 |---|---|
 | Decision | The record of one verdict (`Limen.Decision`): the action, the stage, the score, the matching rules, every signal value with its evidence, and the time it took. `Limen.Decision.explain/1` renders it. |
-| Action | What should happen: `:allow`, `:challenge`, `:throttle`, `:deny` or `:tarpit`. |
-| Stage | Where the decision was reached, and so which mechanism made it: `:ban`, `:limit`, `:pass`, `:rule`, `:decide`, `:socket`, `:endpoint` or `:off`. |
+| Action | What should happen: `:allow`, `:challenge`, `:throttle`, `:deny`, `:tarpit` or `:maze`. |
+| Stage | Where the decision was reached, and so which mechanism made it: `:ban`, `:limit`, `:pass`, `:rule`, `:decide`, `:trap`, `:socket`, `:endpoint` or `:off`. |
 | Mode | `:dry_run` or `:enforce`. In dry-run mode everything is computed and recorded as in enforce mode, and only the final action is skipped. See [Rolling out with dry-run](dry-run-rollout.md). |
 | Enforced | Whether the decision's action was actually carried out. |
 
@@ -80,8 +80,13 @@ A limit is exact and blocks; a rate is approximate and only scores.
 | Pass | The cookie a solved challenge earns, bound to the client's prefix and JA4. While it is valid, requests take the *fast path*, skipping signals and rules (`Limen.Challenge.Pass`). | An HMAC over an expiry and the identity |
 | Throttle | `429 Too Many Requests` with `Retry-After`. | A limit |
 | Deny | `403 Forbidden`, optionally with a ban. | |
-| Ban | A prefix refused until an expiry, in the ban list (`Limen.State.BanList`). | An ETS table, a sweeper and cluster propagation |
+| Ban | A prefix refused until an expiry, in the ban list (`Limen.State.BanList`). A ban whose action is `:maze` is a *flag*. | An ETS table, a sweeper and cluster propagation |
 | Tarpit | Silence, then `403`: refused clients pay for asking in time (`Limen.Tarpit`). | A bounded sleep |
+| Maze | Endless, slowly served pages that link ever deeper, to waste a scraper's time and crawl budget (`Limen.Maze`). | A Markov chain, weighted dice and seeded randomness |
+| Trap | A honeypot: a hidden link, or a decoy form field, that no person uses. Using one is a *confession*: the prefix is flagged and sent to the maze (`Limen.Trap`). | Hidden links, decoy fields and signed timestamps |
+
+*Honeypots* covers traps and the maze together; see [Honeypots and the
+maze](honeypots-and-maze.md).
 
 ## Shared memory: the state
 
@@ -92,7 +97,7 @@ built on them. Each is lock-free and bounded (`Limen.State`).
 |---|---|---|
 | Window | Sliding-window counters in three rotating slots, a key holding one count or a row of several (`Limen.State.Window`). | Rates, behaviour, the dashboard |
 | GCRA | One timestamp per key: when its next request is due (`Limen.State.Gcra`). | Limits |
-| Ban list | Prefix to expiry and reason (`Limen.State.BanList`). | Bans, the cluster |
+| Ban list | Prefix to expiry, reason and action (`Limen.State.BanList`). | Bans, flags, the cluster |
 | Sketches | Fixed-size approximate structures: a Count-Min Sketch for how many times (`Limen.Sketch.CountMin`), Bloom filters for whether something was seen (`Limen.Sketch.Bloom`, `Limen.Sketch.RotatingBloom`), and a HyperLogLog for how many distinct (`Limen.Sketch.HyperLogLog`). | Full window slots, challenge replays, distinct paths, active prefixes |
 | Caps | Every table has a maximum size. Past it, new keys go to a sketch or are refused, and the `:saturated` counter rises. See [Tuning](tuning.md). | |
 
@@ -135,8 +140,8 @@ connects (`Limen.Socket`, `Limen.LiveView`).
    rates in the window, limits in GCRA.
 4. Decisions are records. `Limen.Plug` turns one into an action, and only
    in enforce mode.
-5. Actions write state that later decisions read: a deny can add a ban, and
-   a solved challenge issues a pass. The next request
+5. Actions write state that later decisions read: a deny can add a ban, a
+   trap adds a flag, a solved challenge issues a pass. The next request
    checks bans and passes before collecting any signal, which is why they
    are stages of their own.
 6. Background processes keep the state bounded and current, and
@@ -144,8 +149,8 @@ connects (`Limen.Socket`, `Limen.LiveView`).
    path.
 
 Within one request, the stages that can end the evaluation run in this
-order: a ban (`:ban`); an exceeded limit (`:limit`); a valid pass
-(`:pass`). Otherwise the policy's signals are
+order: a trap route (`:trap`); a ban or flag (`:ban`); an exceeded limit
+(`:limit`); a valid pass (`:pass`). Otherwise the policy's signals are
 collected, and a hard rule decides (`:rule`) or the score does (`:decide`).
 Behaviour and rates are counted before any of these, so they include every
 request. Last, the decision is recorded and emitted, and its action is

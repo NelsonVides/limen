@@ -77,7 +77,7 @@ defmodule Limen.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv/static mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files: ~w(lib priv/static priv/maze mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 
@@ -91,6 +91,7 @@ defmodule Limen.MixProject do
         "guides/getting-started.md",
         "guides/concepts.md",
         "guides/dry-run-rollout.md",
+        "guides/honeypots-and-maze.md",
         "guides/nginx-ja4.md",
         "guides/tuning.md",
         "CHANGELOG.md",
@@ -108,6 +109,13 @@ defmodule Limen.MixProject do
           Limen.Decision.Match
         ],
         Cluster: [Limen.Cluster],
+        Honeypots: [
+          Limen.Trap,
+          Limen.Maze,
+          Limen.Maze.Model,
+          Limen.Maze.Dice,
+          Limen.Maze.Bundled
+        ],
         Instances: [Limen.Instance, Limen.Supervisor, Limen.Owner],
         Configuration: [Limen.Config, Limen.Config.Keys, Limen.Lists],
         Challenge: [

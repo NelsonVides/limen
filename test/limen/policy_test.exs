@@ -2,7 +2,7 @@ defmodule Limen.PolicyTest do
   use Limen.Case, async: true
 
   alias Limen.{Context, Decision, Policy}
-  alias Limen.Test.Policies.{Limited, Scoring}
+  alias Limen.Test.Policies.{Limited, Mazing, Scoring}
 
   doctest Limen.Policy.Runtime
   doctest Limen.Policy.Default
@@ -88,6 +88,35 @@ defmodule Limen.PolicyTest do
       assert decision.score == 85
       assert decision.params == %{ban: 30}
       assert Limen.banned(limen, {192, 0, 2, 1}).reason == :curl
+    end
+
+    test "maze rules short-circuit and flag the client", %{limen: limen} do
+      conn = request([{"user-agent", "curl/8.5.0"}, {"accept-language", "en"}])
+
+      assert %Decision{action: :maze, stage: :rule, params: %{ban: 120}, matches: [match]} =
+               decide(limen, Mazing, conn)
+
+      assert %{name: :scraper, kind: :maze} = match
+      assert %Decision{action: :maze, stage: :ban} = decide(limen, Mazing, conn)
+
+      assert %{action: :maze, origin: :policy, reason: :scraper, mode: :dry_run} =
+               Limen.banned(limen, {192, 0, 2, 1})
+    end
+
+    @tag config: [maze: [delay: {0, 0}]]
+    test "decide can send to the maze, which enforcing serves", %{limen: limen} do
+      conn = request([{"user-agent", "Mozilla/5.0"}])
+
+      assert %Decision{action: :maze, stage: :decide, params: %{}, score: 50} =
+               decide(limen, Mazing, conn)
+
+      served =
+        Limen.Plug.call(conn, Limen.Plug.init(instance: limen, policy: Mazing, mode: :enforce))
+
+      assert served.status == 200
+      assert served.state == :chunked
+      assert served.resp_body =~ "<!DOCTYPE html>"
+      refute Limen.banned(limen, {192, 0, 2, 1})
     end
 
     test "rates count every request the policy sees", %{limen: limen} do
@@ -183,6 +212,10 @@ defmodule Limen.PolicyTest do
 
       assert_raise CompileError, ~r/unknown options/, fn ->
         compile("allow :x, when: true, ban: 1")
+      end
+
+      assert_raise CompileError, ~r/unknown options/, fn ->
+        compile("maze :x, when: true, delay: 1")
       end
     end
 

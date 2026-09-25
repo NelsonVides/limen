@@ -20,7 +20,8 @@ defmodule Limen.Plug do
 
     1. **Identify** the client: address, prefix and JA4 (see `Limen.Signal`),
        and track its behaviour.
-    2. **Ban**: a banned prefix is denied.
+    2. **Ban**: a banned prefix is denied, or sent to the maze (see
+       `Limen.Maze`) when its ban says so.
     3. **Limit**: the policy's hard limits.
     4. **Pass**: a valid pass cookie (see `Limen.Challenge`) allows the
        request right away, without collecting any other signal.
@@ -29,12 +30,17 @@ defmodule Limen.Plug do
        `Limen.Policy`.
     7. **Act**: continue, or respond on the application's behalf: `403` for
        denials, `429` with `Retry-After` for throttling, the challenge page
-       for challenged navigations.
+       for challenged navigations, a slow maze page for `GET` requests sent
+       to the maze.
 
   Requests under the challenge path (`/__limen` by default) are Limen's own
   endpoints and never reach the application. They are served by the plug's
   instance, and verify solutions with the keys of whichever instance issued
   the challenge.
+
+  Requests under a trap path of the plug's instance (see `Limen.Trap`) are
+  settled at the `:trap` stage, before any route: the client is flagged and
+  sent to the maze.
 
   Each evaluation produces a `Limen.Decision`, emitted as a
   `[:limen, :decision]` telemetry event, sampled into `Limen.DecisionLog`,
@@ -74,7 +80,7 @@ defmodule Limen.Plug do
 
   @behaviour Plug
 
-  alias Limen.{Challenge, Context, Decision, Gate, Instance, Policy, Signal}
+  alias Limen.{Challenge, Context, Decision, Gate, Instance, Policy, Signal, Trap}
   alias Limen.Challenge.{Assets, Page, Pass, Replay, Token}
   alias Limen.Decision.Match
   alias Limen.Policy.Runtime
@@ -143,12 +149,24 @@ defmodule Limen.Plug do
         endpoint(conn, endpoint, instance, opts)
 
       :error ->
-        {_segments, path, target} = Enum.find(routes, &prefix?(elem(&1, 0), path_info))
-        gate(conn, path, target, instance)
+        case trap(instance.config.trap.routes, path_info) do
+          nil ->
+            {_segments, path, target} = Enum.find(routes, &prefix?(elem(&1, 0), path_info))
+            gate(conn, path, target, instance)
+
+          trap ->
+            trapped(conn, trap, instance)
+        end
     end
   end
 
   defp prefix?(segments, path_info), do: strip_prefix(segments, path_info) != :error
+
+  defp trap([], _path_info), do: nil
+
+  defp trap(routes, path_info) do
+    Enum.find_value(routes, fn {segments, path} -> prefix?(segments, path_info) && path end)
+  end
 
   defp strip_prefix([], rest), do: {:ok, rest}
   defp strip_prefix([segment | segments], [segment | rest]), do: strip_prefix(segments, rest)
@@ -172,6 +190,24 @@ defmodule Limen.Plug do
         |> Gate.finalize(ctx, started)
         |> act(conn, ctx)
     end
+  end
+
+  # A client already sent to the maze stays there; one that was only denied
+  # is caught again, and its ban escalated to the maze.
+  defp trapped(conn, trap, instance) do
+    started = System.monotonic_time()
+    ctx = Signal.identify(Context.from_conn(conn, instance), instance.config)
+    {conn, ctx} = Behaviour.track(conn, ctx)
+
+    {decision, ctx} =
+      case BanList.lookup(instance, ctx.prefix, ctx.now) do
+        %{action: :maze} = ban -> {Gate.banned(ban, instance.config.mode), ctx}
+        _none_or_denied -> Trap.decide(ctx, trap)
+      end
+
+    %{decision | route: trap}
+    |> Gate.finalize(ctx, started)
+    |> act(conn, ctx)
   end
 
   # Routes may use another instance than the plug's.
@@ -266,16 +302,19 @@ defmodule Limen.Plug do
   end
 
   # Bans are state, not the final action: they are recorded in both modes,
-  # carrying the mode so dry-run bans are never enforced.
-  defp record_ban(%Decision{action: :deny, params: %{ban: ttl}} = decision, ctx)
-       when is_integer(ttl) and ttl > 0 do
+  # carrying the mode so dry-run bans are never enforced. Denials ban, and
+  # maze decisions flag the client for the maze.
+  defp record_ban(%Decision{action: action, params: %{ban: ttl}} = decision, ctx)
+       when action in [:deny, :maze] and is_integer(ttl) and ttl > 0 do
     reason =
       case decision.matches do
         [%Match{name: name} | _rest] -> name
         [] -> decision.clause
       end
 
-    opts = [mode: decision.mode, origin: :policy, reason: reason, now: ctx.now]
+    if decision.stage == :trap, do: Limen.Stats.incr(ctx.instance, :trap_hit)
+    origin = if decision.stage == :trap, do: :trap, else: :policy
+    opts = [mode: decision.mode, origin: origin, action: action, reason: reason, now: ctx.now]
     _result = BanList.ban(ctx.instance, ctx.prefix, ttl, opts)
     :ok
   end
@@ -303,7 +342,20 @@ defmodule Limen.Plug do
     plain(conn, 403, "Forbidden")
   end
 
+  defp respond(%Plug.Conn{method: "GET"} = conn, %Decision{action: :maze} = decision, ctx),
+    do: Limen.Maze.serve(conn, ctx, maze_base(decision, ctx))
+
   defp respond(conn, %Decision{}, _ctx), do: plain(conn, 403, "Forbidden")
+
+  # Maze links lead into the trap the client fell into, or else into the
+  # first trap, so following them confirms it; without traps, below the
+  # requested path.
+  defp maze_base(%Decision{stage: :trap, route: trap}, _ctx), do: trap
+
+  defp maze_base(_decision, %Context{instance: %{config: %{trap: %{paths: [trap | _more]}}}}),
+    do: trap
+
+  defp maze_base(_decision, %Context{path: path}), do: path
 
   defp challenge(conn, difficulty, %Context{instance: instance} = ctx) do
     token = Token.issue(ctx, difficulty)

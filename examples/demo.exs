@@ -8,6 +8,12 @@
 # `curl -i localhost:4000`. Every decision is logged. In dry-run mode (the
 # default) nothing is blocked; in enforce mode automated clients get the
 # proof-of-work challenge, which a browser solves in a fraction of a second.
+#
+# The page hides a link to a trap, and its form carries a form trap. In
+# enforce mode, follow the hidden link (see /robots.txt for the trap path)
+# with `curl -N localhost:4000/archive/directory/x` to watch a maze page
+# drip in; every later request from your address gets the maze too, until
+# you restart the demo.
 
 Mix.install([
   {:limen, path: Path.expand("..", __DIR__)},
@@ -23,7 +29,10 @@ mode = if System.get_env("LIMEN_MODE") == "enforce", do: :enforce, else: :dry_ru
 Application.put_env(:demo, Limen,
   mode: mode,
   secret_key: String.duplicate("limen-demo-secret", 2),
-  decision_log: [sample_rate: 1.0, flush_interval: 500]
+  decision_log: [sample_rate: 1.0, flush_interval: 500],
+  trap: [paths: ["/archive/directory"], ban: 600],
+  # Quicker than the defaults, to watch it happen.
+  maze: [delay: {200, 1_000}, max_duration: 15_000]
 )
 
 # Endpoint configuration is read when the endpoint module compiles.
@@ -61,6 +70,7 @@ defmodule Demo.Layouts do
       </head>
       <body style="font-family: system-ui; max-width: 48rem; margin: 2rem auto">
         {@inner_content}
+        <footer>{Limen.Trap.link(:demo)}</footer>
       </body>
     </html>
     """
@@ -72,7 +82,20 @@ defmodule Demo.HomeLive do
 
   def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(1_000, :tick)
-    {:ok, assign(socket, stats: Limen.Stats.snapshot(:demo), connected: connected?(socket))}
+    stats = Limen.Stats.snapshot(:demo)
+    {:ok, assign(socket, stats: stats, connected: connected?(socket), subscribed: nil)}
+  end
+
+  # Trapped submissions get the same answer as real ones.
+  def handle_event("subscribe", params, socket) do
+    result =
+      case Limen.LiveView.check_form(socket, params, otp_app: :demo) do
+        {:ok, _decision} -> "subscribed"
+        {:trapped, _decision} -> "trapped"
+      end
+
+    IO.puts("Newsletter form: #{result}")
+    {:noreply, assign(socket, subscribed: "Thanks, check your inbox.")}
   end
 
   def handle_info(:tick, socket),
@@ -85,9 +108,21 @@ defmodule Demo.HomeLive do
       This LiveView {if @connected, do: "passed the socket gate", else: "is rendering"}.
       See <a href="/dashboard/limen">the dashboard</a>.
     </p>
+    <form phx-submit="subscribe">
+      {Limen.Trap.form_fields(:demo)}
+      <input type="email" name="email" placeholder="you@example.com" />
+      <button>Subscribe</button>
+    </form>
+    <p :if={@subscribed}>{@subscribed}</p>
     <pre>{inspect(@stats, pretty: true)}</pre>
     """
   end
+end
+
+defmodule Demo.RobotsController do
+  use Phoenix.Controller, formats: [:text]
+
+  def show(conn, _params), do: text(conn, "User-agent: *\n" <> Limen.Trap.robots(:demo))
 end
 
 defmodule Demo.Router do
@@ -100,6 +135,8 @@ defmodule Demo.Router do
     plug :protect_from_forgery
     plug :put_root_layout, html: {Demo.Layouts, :root}
   end
+
+  get "/robots.txt", Demo.RobotsController, :show
 
   scope "/" do
     pipe_through(:browser)

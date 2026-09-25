@@ -17,12 +17,16 @@ defmodule Limen.Stats do
     :throttle,
     :deny,
     :tarpit,
+    :maze,
     :enforced,
     :pass,
     :challenge_issued,
     :challenge_solved,
     :challenge_failed,
     :ban_added,
+    :trap_hit,
+    :maze_served,
+    :maze_refused,
     :saturated
   ]
 
@@ -32,12 +36,16 @@ defmodule Limen.Stats do
           | :throttle
           | :deny
           | :tarpit
+          | :maze
           | :enforced
           | :pass
           | :challenge_issued
           | :challenge_solved
           | :challenge_failed
           | :ban_added
+          | :trap_hit
+          | :maze_served
+          | :maze_refused
           | :saturated
 
   @doc false

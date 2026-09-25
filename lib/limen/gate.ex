@@ -39,8 +39,8 @@ defmodule Limen.Gate do
   end
 
   @doc """
-  The decision for a banned client. A ban created in dry-run mode is
-  reported but never enforced.
+  The decision for a banned client: denied, or sent to the maze when the ban
+  says so. A ban created in dry-run mode is reported but never enforced.
   """
   @spec banned(BanList.ban(), Decision.mode(), Decision.stage()) :: Decision.t()
   def banned(ban, mode, stage \\ :ban) do
@@ -48,11 +48,16 @@ defmodule Limen.Gate do
       name: :banned,
       kind: :ban,
       condition: "prefix is banned",
-      observed: [{"reason", ban.reason}, {"origin", ban.origin}, {"expires_at", ban.expires_at}]
+      observed: [
+        {"reason", ban.reason},
+        {"origin", ban.origin},
+        {"action", ban.action},
+        {"expires_at", ban.expires_at}
+      ]
     }
 
     %Decision{
-      action: :deny,
+      action: ban.action,
       stage: stage,
       mode: if(mode == :enforce and ban.mode == :enforce, do: :enforce, else: :dry_run),
       matches: [match]

@@ -6,7 +6,7 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         live_dashboard "/dashboard",
           additional_pages: [limen: {Limen.Dashboard, otp_app: :my_app}]
 
-    It shows decision and challenge rates, active prefixes, the busiest
+    It shows decision, challenge and trap rates, active prefixes, the busiest
     prefixes and JA4 fingerprints of the last minute, active bans and the
     latest sampled decisions of the instance on the node selected in the
     dashboard. Figures are node-local; pick another node to see its view.
@@ -52,7 +52,7 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
           <.fields_card title="Decisions per second" fields={decision_fields(@rates)} />
         </:col>
         <:col>
-          <.fields_card title="Challenges per second" fields={challenge_fields(@rates)} />
+          <.fields_card title="Challenges and traps per second" fields={challenge_fields(@rates)} />
         </:col>
         <:col>
           <.fields_card title="State" fields={state_fields(@snapshot)} />
@@ -97,6 +97,7 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         <:col field={:prefix} header="Prefix" />
         <:col field={:reason} header="Reason" />
         <:col field={:origin} header="Origin" />
+        <:col field={:action} header="Action" />
         <:col field={:mode} header="Mode" />
         <:col field={:expires_in} header="Expires in (s)" text_align="right" sortable={:asc} />
       </.live_table>
@@ -140,6 +141,7 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         {"Throttled", rates.throttle},
         {"Denied", rates.deny},
         {"Tarpitted", rates.tarpit},
+        {"Sent to the maze", rates.maze},
         {"Pass fast path", rates.pass},
         {"Enforced", rates.enforced}
       ]
@@ -151,6 +153,9 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         {"Solved", rates.challenge_solved},
         {"Failed", rates.challenge_failed},
         {"Bans added", rates.ban_added},
+        {"Trap hits", rates.trap_hit},
+        {"Maze pages served", rates.maze_served},
+        {"Maze requests refused", rates.maze_refused},
         {"Saturated table writes", rates.saturated}
       ]
     end
@@ -161,6 +166,7 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         {"Active prefixes (1-2 min)", snapshot.active_prefixes},
         {"Active bans", snapshot.bans},
         {"Requests held in tarpit", snapshot.tarpitted},
+        {"Requests held in the maze", snapshot.in_maze},
         {"State memory", "#{Float.round(snapshot.memory / 1_048_576, 1)} MiB"}
       ]
     end

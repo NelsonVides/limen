@@ -104,6 +104,36 @@ defmodule Limen.Config do
       * `:interval` - milliseconds between broadcasts. Defaults to `100`.
       * `:max_outbox` - bans waiting to be broadcast. Defaults to `10_000`.
 
+    * `:trap` - honeypots, see `Limen.Trap`:
+      * `:paths` - trap path prefixes, such as `["/archive/directory"]`. A
+        request under one of them is a confession: its prefix is flagged and
+        sent to the maze. Defaults to `[]` (no link traps).
+      * `:ban` - seconds a prefix that fell into a trap stays flagged.
+        Defaults to `86_400`.
+      * `:form_field` - name of the decoy field of `Limen.Trap.form_fields/2`.
+        Defaults to `"website"`.
+      * `:min_fill_time` - milliseconds a person needs at least to fill in a
+        form; faster submissions are confessions. Defaults to `3_000`.
+
+    * `:maze` - the slow, endless pages trapped clients get, see `Limen.Maze`:
+      * `:corpus` - text files the maze's language model also learns from,
+        so its pages read like your site. Defaults to `[]`.
+      * `:bundled_corpus` - whether to learn from Limen's own neutral text
+        too. Defaults to `true`; at least one corpus is needed.
+      * `:drift` - `nil` (default), `:daily` or `:weekly`: how often every
+        page changes. Without drift a page never changes.
+      * `:max_concurrent` - requests held in the maze at once; beyond that,
+        they get an immediate `429`. Defaults to `200`.
+      * `:max_duration` - milliseconds a maze response may take. Defaults to
+        `60_000`.
+      * `:delay` - `{min, max}` milliseconds between chunks. Defaults to
+        `{1_000, 5_000}`.
+      * `:chunk` - `{min, max}` bytes per chunk. Defaults to `{64, 512}`.
+      * `:paragraphs` - `{min, max}` paragraphs per page. Defaults to
+        `{4, 10}`.
+      * `:links` - `{min, max}` links in a page's navigation and related
+        lists. Defaults to `{4, 10}`.
+
     * `:tarpit` - limits on tarpitted requests, see `Limen.Tarpit`:
       * `:max_concurrent` - requests held at once. Defaults to `1_000`.
       * `:max_delay` - longest delay in milliseconds. Defaults to `30_000`.
@@ -180,6 +210,20 @@ defmodule Limen.Config do
   @shape_defaults %{ignore_headers: %{}}
 
   @tarpit_defaults %{max_concurrent: 1_000, max_delay: 30_000}
+
+  @trap_defaults %{paths: [], ban: 86_400, form_field: "website", min_fill_time: 3_000}
+
+  @maze_defaults %{
+    corpus: [],
+    bundled_corpus: true,
+    drift: nil,
+    max_concurrent: 200,
+    max_duration: 60_000,
+    delay: {1_000, 5_000},
+    chunk: {64, 512},
+    paragraphs: {4, 10},
+    links: {4, 10}
+  }
   @cluster_defaults %{enabled: false, scope: nil, interval: 100, max_outbox: 10_000}
 
   @challenge_defaults %{
@@ -203,6 +247,8 @@ defmodule Limen.Config do
     fcrdns: @fcrdns_defaults,
     shape: @shape_defaults,
     tarpit: @tarpit_defaults,
+    trap: Map.put(@trap_defaults, :routes, []),
+    maze: @maze_defaults,
     lists: [],
     cluster: @cluster_defaults,
     ipv4_prefix: 32,
@@ -245,9 +291,16 @@ defmodule Limen.Config do
     secret = Keyword.get(secrets, :secret_key)
     keys = keys!(secret, Keyword.get(secrets, :previous_secret_keys, []))
 
-    Enum.reduce(opts, Map.put(@defaults, :keys, keys), fn {key, value}, acc ->
-      put(acc, key, value)
-    end)
+    config =
+      Enum.reduce(opts, Map.put(@defaults, :keys, keys), fn {key, value}, acc ->
+        put(acc, key, value)
+      end)
+
+    # Checked again once every option is known, whatever their order.
+    case outside_challenge(config.trap.paths, config) do
+      :ok -> config
+      {:error, message} -> raise ArgumentError, "invalid Limen trap option: #{message}"
+    end
   end
 
   @doc """
@@ -347,6 +400,29 @@ defmodule Limen.Config do
     end)
   end
 
+  defp validate(:trap, opts, config) when is_list(opts) do
+    with {:ok, trap} <- merge_known(@trap_defaults, opts, &valid_trap?/2),
+         :ok <- outside_challenge(trap.paths, config) do
+      {:ok,
+       Map.put(trap, :routes, Enum.map(trap.paths, &{String.split(&1, "/", trim: true), &1}))}
+    end
+  end
+
+  defp validate(:maze, opts, _config) when is_list(opts) do
+    with {:ok, maze} <- merge_known(@maze_defaults, opts, &valid_maze?/2) do
+      cond do
+        maze.corpus == [] and not maze.bundled_corpus ->
+          {:error, "the maze needs a :corpus when :bundled_corpus is false"}
+
+        missing = Enum.find(maze.corpus, &(not File.regular?(&1))) ->
+          {:error, "corpus file #{inspect(missing)} does not exist"}
+
+        true ->
+          {:ok, maze}
+      end
+    end
+  end
+
   defp validate(:tarpit, opts, _config) when is_list(opts) do
     merge_known(@tarpit_defaults, opts, fn _key, value -> is_integer(value) and value >= 0 end)
   end
@@ -393,6 +469,36 @@ defmodule Limen.Config do
 
   defp valid_fcrdns?(:dns, module), do: is_atom(module)
   defp valid_fcrdns?(_key, value), do: is_integer(value) and value > 0
+
+  defp valid_trap?(:paths, paths), do: is_list(paths) and Enum.all?(paths, &valid_path?/1)
+
+  defp valid_trap?(:form_field, name), do: is_binary(name) and name =~ ~r/^[A-Za-z0-9_-]+$/
+  defp valid_trap?(:ban, ttl), do: is_integer(ttl) and ttl > 0
+  defp valid_trap?(:min_fill_time, ms), do: is_integer(ms) and ms >= 0
+
+  defp valid_maze?(:corpus, files), do: is_list(files) and Enum.all?(files, &is_binary/1)
+  defp valid_maze?(:bundled_corpus, bundled), do: is_boolean(bundled)
+  defp valid_maze?(:drift, drift), do: drift in [nil, :daily, :weekly]
+
+  defp valid_maze?(key, value) when key in [:max_concurrent, :max_duration],
+    do: is_integer(value) and value > 0
+
+  defp valid_maze?(_range, {min, max}),
+    do: is_integer(min) and is_integer(max) and min >= 0 and min <= max
+
+  defp valid_maze?(_key, _value), do: false
+
+  defp valid_path?("/" <> rest = path), do: rest != "" and not String.ends_with?(path, "/")
+  defp valid_path?(_path), do: false
+
+  # Limen serves its own endpoints under the challenge path before anything
+  # else, so a trap there would never be reached.
+  defp outside_challenge(paths, %{challenge: %{path: challenge}}) do
+    case Enum.find(paths, &(&1 == challenge or String.starts_with?(&1, challenge <> "/"))) do
+      nil -> :ok
+      path -> {:error, "trap path #{inspect(path)} is under the challenge path"}
+    end
+  end
 
   defp valid_challenge?(:path, "/" <> _rest = path), do: not String.ends_with?(path, "/")
   defp valid_challenge?(:cookie, name), do: is_binary(name) and name =~ ~r/^[A-Za-z0-9_-]+$/

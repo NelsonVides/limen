@@ -47,6 +47,7 @@ defmodule Limen.Bench.Scenarios do
   def all do
     state()
     |> Map.merge(plug())
+    |> Map.merge(maze())
     |> Map.new(fn
       {name, {fun, config}} -> {name, job(fun, config, & &1)}
       {name, {fun, config, prepare}} -> {name, job(fun, config, prepare)}
@@ -176,6 +177,18 @@ defmodule Limen.Bench.Scenarios do
       "signals: http shape, chrome" =>
         {fn instance -> HttpShape.collect(Context.from_conn(chrome, instance)) end, []}
     }
+  end
+
+  # Rendering happens once per maze response, off the path of legitimate
+  # requests; the rest of a maze response is spent asleep.
+  defp maze do
+    render = fn instance ->
+      IO.iodata_to_binary(
+        Limen.Maze.page(instance, "/archive/regional-reports-2291", "/archive", 0)
+      )
+    end
+
+    %{"maze: render page" => {render, [trap: [paths: ["/archive"]]]}}
   end
 
   defp with_client(conn, n) do

@@ -1,0 +1,143 @@
+# Limen's bundled maze corpus.
+#
+# Original text written for Limen, released under the same license. It reads
+# like the everyday pages of an organisation's website: updates, guides,
+# service descriptions and archive notes. Sentences deliberately share their
+# small phrases so the language model can recombine them.
+
+Welcome to the archive of our regional programme, where you can find every report we have published since the first season.
+The archive is organised by year and by topic, and each entry links to the documents that were shared at the time.
+Most of the material in the archive was prepared by volunteers who wanted to keep a record of the work in the region.
+If you are looking for a specific report, the index at the bottom of this page lists every title in order.
+We update the index at the end of each month, so recent additions may take a few weeks to appear.
+Some of the older documents were scanned from paper copies and may be difficult to read on small screens.
+You can request a printed copy of any report by writing to the office with the title and the year of publication.
+
+Our team works with partners across the region to improve the way local services are planned and delivered.
+The team meets every week to review the progress of each project and to agree on the next steps.
+Each project has a coordinator who is responsible for the schedule, the budget and the communication with partners.
+We publish a short summary of every meeting so that members can follow the discussion from anywhere.
+The summaries are written in plain language and avoid technical terms whenever possible.
+If a term needs to be explained, we add a short note at the end of the summary.
+Members are welcome to suggest topics for the next meeting through the form on the community page.
+
+This guide explains how to prepare an application for the next round of the programme.
+Before you begin, read the eligibility criteria carefully and check that your project meets each of them.
+The application form asks for a description of the project, a timeline and an estimate of the costs.
+You can save the form at any time and return to it later, as long as you submit it before the deadline.
+Applications that arrive after the deadline cannot be considered, even if the delay was caused by a technical problem.
+We recommend that you prepare the description in a separate document and copy it into the form when it is ready.
+A member of the team will confirm that your application was received within two working days.
+If you have not received a confirmation after a week, please contact the office.
+The review of applications usually takes six to eight weeks, depending on the number of submissions.
+During the review, we may ask for additional information or clarification about your budget.
+Successful applicants will be invited to a short meeting to discuss the details of the agreement.
+
+The new edition of the handbook is now available for download from the resources page.
+This edition includes updated guidance on planning, a new chapter on evaluation and a longer list of examples.
+We would like to thank everyone who sent comments on the previous edition of the handbook.
+Many of the changes in this edition were suggested by readers who used the handbook in their own projects.
+The handbook is also available in a printed version for members who prefer to read on paper.
+A summary of the main changes can be found at the beginning of the handbook.
+
+Every spring we organise an open day at the main office, where visitors can meet the team and learn about our work.
+The open day includes short presentations, a guided tour of the building and a small exhibition of recent projects.
+Entry is free, but we ask visitors to register in advance so that we can plan the number of guides.
+Refreshments will be served in the garden if the weather allows it.
+Last year more than three hundred people attended the open day, and many of them joined as members afterwards.
+The programme for this year will be published on the events page a month before the date.
+
+Our services are designed to support small organisations that do not have the resources to manage large projects alone.
+We offer advice on planning, help with applications and practical support during the delivery of a project.
+The advice service is available by appointment on weekdays, either at the office or by video call.
+Most appointments last about an hour and are free of charge for members.
+For more complex questions, we can arrange a series of meetings with a specialist from our network.
+The network includes experienced practitioners who have worked on similar projects in other regions.
+We keep a record of every question we receive, and the most common ones are answered on the help page.
+
+The help page answers the questions we receive most often about membership, events and the programme.
+If you cannot find the answer to your question, you can send it to the office through the contact form.
+We try to reply to every message within three working days.
+Please do not send personal documents through the contact form, as it is not designed for confidential information.
+For questions about an existing application, include the reference number that was sent to you by email.
+
+Membership is open to individuals and organisations that share the aims of the programme.
+Members receive the monthly newsletter, invitations to events and early access to new publications.
+Organisations that join as members can also nominate a representative for the advisory group.
+The advisory group meets four times a year to review the direction of the programme and to propose new priorities.
+The annual membership fee helps to cover the cost of events and publications.
+Reduced fees are available for students, retired members and small community groups.
+You can cancel your membership at any time by writing to the office.
+
+The monthly newsletter collects the news of the past month, a list of upcoming events and a short feature on one of our projects.
+Each issue also includes a section where members can share their own news and announcements.
+If you would like to contribute to the newsletter, send us a short text and a photograph before the tenth of the month.
+Past issues of the newsletter are kept in the archive and can be read online.
+
+This report describes the results of the second phase of the project and the lessons we learnt along the way.
+The second phase focused on the northern part of the region, where fewer services were available at the start.
+In the first months, the team visited each of the participating towns to understand the needs of local residents.
+The visits showed that transport and access to information were the most common concerns.
+Based on these findings, the project introduced a weekly information point in each town.
+The information points were run by local volunteers with the support of the project team.
+By the end of the phase, the information points had answered more than two thousand questions.
+The report also includes recommendations for the third phase and a short list of open questions.
+
+A detailed timeline of the project is included in the appendix to this report.
+The appendix also lists the partners who contributed to each phase and the funding they provided.
+Figures in the report are rounded to the nearest whole number, so some totals may not add up exactly.
+Corrections to the report will be published on this page if any errors are found.
+
+The workshop series continues this autumn with four sessions on planning, communication, evaluation and funding.
+Each session combines a short presentation with practical exercises in small groups.
+Participants are encouraged to bring an example from their own work to discuss during the exercises.
+The sessions take place on Thursday evenings at the main office and are also streamed online.
+Places are limited, so we recommend that you register early.
+Materials from previous sessions are available on the resources page.
+
+The resources page brings together guides, templates and examples that can help you plan and run a project.
+All of the templates can be adapted to your own needs and used without asking for permission.
+If you create a useful resource based on one of our templates, we would be happy to share it with other members.
+New resources are announced in the newsletter and on the news page.
+
+The news page lists the latest announcements from the programme, in the order they were published.
+Older announcements are moved to the archive after six months.
+You can subscribe to the news page to receive a message whenever a new announcement is published.
+
+We are looking for volunteers to help with the information points, the open day and the preparation of the newsletter.
+Volunteers do not need any previous experience, as we provide a short training session before they start.
+Most volunteers give a few hours each month, and the schedule is agreed in advance to suit everyone.
+In return, volunteers gain practical experience, meet people from across the region and receive a certificate at the end of the year.
+If you are interested in volunteering, please fill in the short form on the community page.
+
+The community page is a place for members to share news, ask questions and find partners for new projects.
+Posts on the community page are reviewed by a moderator before they are published.
+We ask everyone to keep the discussion friendly and to respect the privacy of other members.
+Posts that contain advertising or personal information will not be published.
+
+Our office is located in the centre of the town, a short walk from the railway station.
+The office is open from Monday to Friday, from nine in the morning until five in the afternoon.
+The building has step-free access, and a lift connects the ground floor to the meeting rooms upstairs.
+Visitors who arrive by car can use the public car park next to the library.
+During the summer months, the office closes earlier on Fridays.
+
+The programme is funded by a combination of public grants, membership fees and donations from local businesses.
+We publish our accounts every year, together with a summary of how the funds were used.
+Most of the budget is spent directly on projects, while a smaller share covers the running costs of the office.
+If you would like to support the programme with a donation, you can find the details on the support page.
+Every donation, however small, helps us to reach more people in the region.
+
+In the coming year, the programme will focus on three priorities: access to services, local partnerships and the training of volunteers.
+Each priority will be led by a small working group that includes members, partners and staff.
+The working groups will report their progress at the annual meeting in the autumn.
+We will also review the structure of the programme to make sure that it remains simple and easy to join.
+Your feedback is an important part of this review, and we welcome comments from every member.
+
+The annual meeting is the most important event of the year for the members of the programme.
+At the meeting, the team presents the results of the past year and the plans for the year ahead.
+Members vote on the priorities for the coming year and elect the members of the advisory group.
+The minutes of the annual meeting are published in the archive a few weeks after the event.
+
+Please note that the office will be closed during the public holidays at the end of the year.
+Messages sent during this period will be answered when the office opens again in January.
+We would like to thank all of our members, partners and volunteers for their support throughout the year.

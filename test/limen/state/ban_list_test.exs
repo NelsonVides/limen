@@ -37,6 +37,20 @@ defmodule Limen.State.BanListTest do
     assert expires_at == now + 120_000
   end
 
+  test "bans deny unless they send to the maze, which sticks", %{instance: instance, now: now} do
+    BanList.ban(instance, @prefix, 60, now: now)
+    assert %{action: :deny} = BanList.lookup(instance, @prefix, now)
+
+    BanList.ban(instance, @prefix, 10, action: :maze, origin: :trap, now: now)
+    assert %{action: :maze, expires_at: expires_at} = BanList.lookup(instance, @prefix, now)
+    assert expires_at == now + 60_000
+
+    BanList.ban(instance, @prefix, 600, action: :deny, now: now)
+    assert %{action: :maze, expires_at: expires_at} = BanList.lookup(instance, @prefix, now)
+    assert expires_at == now + 600_000
+    assert [%{action: :maze}] = BanList.list(instance, now)
+  end
+
   test "sweep removes expired bans", %{instance: instance, now: now} do
     BanList.ban(instance, @prefix, 1, now: now)
     BanList.ban(instance, {4, 1, 32}, 100, now: now)

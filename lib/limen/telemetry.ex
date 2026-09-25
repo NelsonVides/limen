@@ -3,7 +3,8 @@ defmodule Limen.Telemetry do
   Telemetry events emitted by Limen.
 
   Handlers run synchronously in the request process, so they must be cheap and
-  must not block. Every event's metadata includes the `:instance` name. Attach heavier consumers to a sampled source instead, such as
+  must not block. Every event's metadata includes the `:instance` name.
+  Attach heavier consumers to a sampled source instead, such as
   `Limen.DecisionLog`.
 
   ## Events
@@ -21,9 +22,16 @@ defmodule Limen.Telemetry do
       * Metadata: `:result` (`:ok` or `{:error, reason}`), `:method` (`:pow`
         or `:wait`), `:identity`.
 
-    * `[:limen, :ban, :added]` - a prefix was banned.
+    * `[:limen, :ban, :added]` - a prefix was banned, or flagged for the maze.
       * Measurements: `:ttl` (seconds).
-      * Metadata: `:prefix`, `:reason`, `:origin` (`:local` or `:remote`).
+      * Metadata: `:prefix`, `:reason`, `:origin` (`:policy`, `:admin`,
+        `:trap` or `:remote`), `:action` (`:deny` or `:maze`), `:expires_at`.
+
+    * `[:limen, :maze, :served]` - a maze response ended.
+      * Measurements: `:duration` (native time units), `:bytes`, `:chunks`.
+      * Metadata: `:result` (`:complete`, `:deadline` when the rest was sent
+        at once, or `:closed` when the client went away), `:path`,
+        `:identity`.
 
     * `[:limen, :state, :saturated]` - a capped table refused a new key;
       requests for it fall back to approximate state.

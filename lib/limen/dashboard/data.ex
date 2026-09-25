@@ -24,6 +24,7 @@ defmodule Limen.Dashboard.Data do
       active_prefixes: State.active_prefixes(instance),
       bans: length(BanList.list(instance)),
       tarpitted: Tarpit.held(instance),
+      in_maze: :atomics.get(instance.maze, 1),
       memory: Enum.sum(Map.values(State.memory(instance)))
     }
   end
@@ -80,6 +81,7 @@ defmodule Limen.Dashboard.Data do
         prefix: IP.prefix_to_string(ban.prefix),
         reason: inspect(ban.reason),
         origin: ban.origin,
+        action: ban.action,
         mode: ban.mode,
         expires_in: div(ban.expires_at - now, 1_000)
       }

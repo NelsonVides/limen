@@ -15,24 +15,29 @@ defmodule Limen.Decision do
     * `:throttle` - `429 Too Many Requests` (`params.retry_after` seconds).
     * `:deny` - `403 Forbidden`; `params.ban` seconds, when set, also bans the
       client prefix.
-    * `:tarpit` - the response is delayed by `params.delay` milliseconds and
-      then denied.
+    * `:tarpit` - nothing is sent for `params.delay` milliseconds, then
+      `403 Forbidden`. A tarpit never bans.
+    * `:maze` - the client gets a slow, endless maze page (see `Limen.Maze`)
+      instead of the application; `params.ban` seconds, when set, also flags
+      the client prefix so every later request goes to the maze too.
 
   ## Stages
 
   The stage names the step of the pipeline that settled the decision:
-  `:off`, `:endpoint` (a Limen challenge endpoint), `:ban`, `:limit`, `:pass`,
-  `:rule` (an `allow`/`deny` rule short-circuited), `:decide` (the score
-  thresholds), or `:socket` (a WebSocket or LiveView connection check).
+  `:off`, `:endpoint` (a Limen challenge endpoint), `:trap` (a honeypot, see
+  `Limen.Trap`), `:ban`, `:limit`, `:pass`, `:rule` (an `allow`, `deny` or
+  `maze` rule short-circuited), `:decide` (the score thresholds), or `:socket`
+  (a WebSocket or LiveView connection check).
   """
 
   use Boundary, type: :strict, deps: [Limen.IP], exports: [Match]
 
   alias Limen.Decision.Match
 
-  @type action :: :allow | :challenge | :throttle | :deny | :tarpit
+  @type action :: :allow | :challenge | :throttle | :deny | :tarpit | :maze
   @type mode :: :dry_run | :enforce
-  @type stage :: :off | :endpoint | :ban | :limit | :pass | :rule | :decide | :socket
+  @type stage ::
+          :off | :endpoint | :trap | :ban | :limit | :pass | :rule | :decide | :socket
 
   @type t :: %__MODULE__{
           instance: atom() | nil,
@@ -81,7 +86,7 @@ defmodule Limen.Decision do
     A rule that matched, and the values its condition observed.
     """
 
-    @type kind :: :allow | :deny | :score | :limit | :ban | :pass | :list
+    @type kind :: :allow | :deny | :maze | :score | :limit | :ban | :pass | :list | :trap
     @type t :: %__MODULE__{
             name: atom(),
             kind: kind(),
@@ -102,6 +107,7 @@ defmodule Limen.Decision do
   def normalize(:deny), do: {:deny, %{}}
   def normalize(:throttle), do: {:throttle, %{retry_after: 1}}
   def normalize(:tarpit), do: {:tarpit, %{delay: 5_000}}
+  def normalize(:maze), do: {:maze, %{}}
   def normalize(:challenge), do: {:challenge, %{difficulty: 16}}
   def normalize({action, opts}) when is_list(opts), do: normalize({action, Map.new(opts)})
 
@@ -113,7 +119,8 @@ defmodule Limen.Decision do
 
   def normalize({:tarpit, ms}) when is_integer(ms), do: normalize({:tarpit, %{delay: ms}})
 
-  def normalize({action, %{} = params}) when action in [:allow, :deny, :throttle, :tarpit] do
+  def normalize({action, %{} = params})
+      when action in [:allow, :deny, :throttle, :tarpit, :maze] do
     {default_action, defaults} = normalize(action)
     {default_action, Map.merge(defaults, params)}
   end
@@ -126,7 +133,7 @@ defmodule Limen.Decision do
   def normalize(other) do
     raise ArgumentError,
           "a policy decided #{inspect(other)}, expected :allow, :deny, :throttle, :tarpit, " <>
-            ":challenge or {action, opts}"
+            ":maze, :challenge or {action, opts}"
   end
 
   @doc """

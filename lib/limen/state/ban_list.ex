@@ -11,6 +11,9 @@ defmodule Limen.State.BanList do
   enforced, so a dry-run policy can never block traffic, not even through
   state it leaves behind.
 
+  A ban's action says what banned clients get: `:deny` (a `403`) or `:maze`
+  (the slow pages of `Limen.Maze`, for clients caught by a `Limen.Trap`).
+
   The list holds at most `:max_bans` entries; further bans are refused.
 
   When clustering is enabled (see `Limen.Cluster`), bans and unbans made on
@@ -20,26 +23,30 @@ defmodule Limen.State.BanList do
 
   alias Limen.Instance
 
-  @type origin :: :policy | :admin | :remote
+  @type origin :: :policy | :admin | :trap | :remote
+  @type action :: :deny | :maze
   @type ban :: %{
           prefix: Limen.IP.prefix(),
           expires_at: integer(),
           reason: term(),
           mode: :dry_run | :enforce,
-          origin: origin()
+          origin: origin(),
+          action: action()
         }
 
   @doc """
   Bans `prefix` for `ttl` seconds.
 
   If the prefix is already banned, the ban is extended when the new one lasts
-  longer, and escalated to `:enforce` when either ban enforces.
+  longer, escalated to `:enforce` when either ban enforces, and to the maze
+  when either sends there: a client caught in a trap stays caught.
 
   ## Options
 
     * `:reason` - recorded with the ban and reported in decisions.
     * `:mode` - `:enforce` (default) or `:dry_run`.
-    * `:origin` - `:policy`, `:admin` (default) or `:remote`.
+    * `:action` - `:deny` (default) or `:maze`.
+    * `:origin` - `:policy`, `:admin` (default), `:trap` or `:remote`.
     * `:now` - the current system time in milliseconds.
   """
   @spec ban(Instance.t(), Limen.IP.prefix(), pos_integer(), keyword()) :: :ok | {:error, :full}
@@ -70,21 +77,26 @@ defmodule Limen.State.BanList do
     mode = Keyword.get(opts, :mode, :enforce)
 
     {prefix, now + ttl * 1_000, Keyword.get(opts, :reason), mode,
-     Keyword.get(opts, :origin, :admin)}
+     Keyword.get(opts, :origin, :admin), Keyword.get(opts, :action, :deny)}
   end
 
-  defp extend(instance, table, {prefix, expires_at, reason, mode, origin} = entry) do
+  defp extend(instance, table, {prefix, expires_at, reason, mode, origin, action} = entry) do
     publish(instance, {:ban, entry}, origin)
 
     case :ets.lookup(table, prefix) do
-      [{^prefix, current_expiry, _reason, current_mode, _origin}]
-      when current_expiry >= expires_at and (current_mode == :enforce or mode == :dry_run) ->
-        :ok
+      [{^prefix, current_expiry, _reason, current_mode, _origin, current_action}] ->
+        current = {current_expiry, current_mode, current_action}
 
-      [{^prefix, current_expiry, _reason, current_mode, _origin}] ->
-        mode = if current_mode == :enforce, do: :enforce, else: mode
-        expires_at = max(current_expiry, expires_at)
-        :ets.insert(table, {prefix, expires_at, reason, mode, origin})
+        merged =
+          {max(current_expiry, expires_at), strongest(current_mode, mode, :enforce),
+           strongest(current_action, action, :maze)}
+
+        # The reason and origin only change when the ban does.
+        if merged != current do
+          {expires_at, mode, action} = merged
+          :ets.insert(table, {prefix, expires_at, reason, mode, origin, action})
+        end
+
         :ok
 
       [] ->
@@ -93,13 +105,17 @@ defmodule Limen.State.BanList do
     end
   end
 
-  defp added(instance, {prefix, expires_at, reason, _mode, origin}, ttl) do
+  defp strongest(current, new, strong) when strong in [current, new], do: strong
+  defp strongest(_current, new, _strong), do: new
+
+  defp added(instance, {prefix, expires_at, reason, _mode, origin, action}, ttl) do
     Limen.Stats.incr(instance, :ban_added)
 
     Limen.Telemetry.execute(instance.name, [:ban, :added], %{ttl: ttl}, %{
       prefix: prefix,
       reason: reason,
       origin: origin,
+      action: action,
       expires_at: expires_at
     })
   end
@@ -112,8 +128,8 @@ defmodule Limen.State.BanList do
 
   def lookup(%Instance{state: %{bans: %{table: table}}}, prefix, now) do
     case :ets.lookup(table, prefix) do
-      [{^prefix, expires_at, reason, mode, origin}] when expires_at > now ->
-        %{prefix: prefix, expires_at: expires_at, reason: reason, mode: mode, origin: origin}
+      [{^prefix, expires_at, _reason, _mode, _origin, _action} = entry] when expires_at > now ->
+        to_map(entry)
 
       _expired_or_missing ->
         nil
@@ -156,12 +172,11 @@ defmodule Limen.State.BanList do
   @doc false
   @spec apply_remote(Instance.t(), {:ban, tuple()} | {:unban, Limen.IP.prefix()}, integer()) ::
           :ok
-  def apply_remote(instance, {:ban, {prefix, expires_at, reason, mode, _origin}}, now) do
+  def apply_remote(instance, {:ban, {prefix, expires_at, reason, mode, _origin, action}}, now) do
     case div(expires_at - now + 999, 1_000) do
       ttl when ttl > 0 ->
-        _result =
-          ban(instance, prefix, ttl, reason: reason, mode: mode, origin: :remote, now: now)
-
+        opts = [reason: reason, mode: mode, action: action, origin: :remote, now: now]
+        _result = ban(instance, prefix, ttl, opts)
         :ok
 
       _expired ->
@@ -178,11 +193,20 @@ defmodule Limen.State.BanList do
   def list(%Instance{state: %{bans: %{table: table}}}, now \\ System.system_time(:millisecond)) do
     table
     |> :ets.tab2list()
-    |> Enum.filter(fn {_prefix, expires_at, _reason, _mode, _origin} -> expires_at > now end)
-    |> Enum.sort_by(fn {_prefix, expires_at, _reason, _mode, _origin} -> expires_at end)
-    |> Enum.map(fn {prefix, expires_at, reason, mode, origin} ->
-      %{prefix: prefix, expires_at: expires_at, reason: reason, mode: mode, origin: origin}
-    end)
+    |> Enum.filter(fn entry -> elem(entry, 1) > now end)
+    |> Enum.sort_by(fn entry -> elem(entry, 1) end)
+    |> Enum.map(&to_map/1)
+  end
+
+  defp to_map({prefix, expires_at, reason, mode, origin, action}) do
+    %{
+      prefix: prefix,
+      expires_at: expires_at,
+      reason: reason,
+      mode: mode,
+      origin: origin,
+      action: action
+    }
   end
 
   @doc """
@@ -193,7 +217,9 @@ defmodule Limen.State.BanList do
         %Instance{state: %{bans: %{table: table, size: size}}},
         now \\ System.system_time(:millisecond)
       ) do
-    swept = :ets.select_delete(table, [{{:_, :"$1", :_, :_, :_}, [{:"=<", :"$1", now}], [true]}])
+    swept =
+      :ets.select_delete(table, [{{:_, :"$1", :_, :_, :_, :_}, [{:"=<", :"$1", now}], [true]}])
+
     :atomics.put(size, 1, :ets.info(table, :size))
     swept
   end

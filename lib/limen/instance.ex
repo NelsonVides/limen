@@ -16,7 +16,7 @@ defmodule Limen.Instance do
   use Boundary, type: :strict, deps: [Limen.Config]
 
   @enforce_keys [:name, :config]
-  defstruct [:name, :config, :supervisor, :stats, :log, :state, :tarpit, :replay]
+  defstruct [:name, :config, :supervisor, :stats, :log, :state, :tarpit, :maze, :replay]
 
   @type t :: %__MODULE__{
           name: atom(),
@@ -26,6 +26,7 @@ defmodule Limen.Instance do
           log: map() | nil,
           state: map() | nil,
           tarpit: :atomics.atomics_ref() | nil,
+          maze: :atomics.atomics_ref() | nil,
           replay: term()
         }
 

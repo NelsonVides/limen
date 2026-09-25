@@ -18,6 +18,10 @@ a message.
 - **Proof-of-work challenges** modelled on Anubis: stateless HMAC-signed
   tokens, a vendored WebCrypto solver, single-use tokens, and a pass cookie
   checked on a fast path of a few microseconds.
+- **Honeypots and a maze**: hidden links and form fields catch clients that
+  act unlike people, and send them to endless, slow, plausible pages written
+  by a Markov chain, the same for your site on every visit and unpredictable
+  anywhere else.
 - **Dry-run first**: every policy can observe without acting, producing exactly
   the decisions it would enforce.
 - **Built for Phoenix**: per-route policies and instances, a LiveView socket
@@ -114,12 +118,13 @@ request
   ▼
 Limen.Plug
   ├── Identify   client address behind trusted proxies, prefix, JA4
-  ├── Ban?       banned prefix → deny
+  ├── Trap?      trap path → flag the prefix, maze
+  ├── Ban?       banned prefix → deny, or maze
   ├── Limit      GCRA hard limits → throttle
   ├── Pass?      valid pass cookie → allow (fast path)
   ├── Collect    signals → %Limen.Context{}
   ├── Score      policy rules → score + matched rules
-  ├── Decide     allow | challenge(difficulty) | throttle | deny | tarpit
+  ├── Decide     allow | challenge(difficulty) | throttle | deny | tarpit | maze
   └── Act        respond or continue, emit telemetry
 ```
 
@@ -142,6 +147,7 @@ after a hundred thousand.
 - [Getting started](guides/getting-started.md)
 - [Concepts](guides/concepts.md)
 - [Rolling out with dry-run](guides/dry-run-rollout.md)
+- [Honeypots and the maze](guides/honeypots-and-maze.md)
 - [JA4 behind nginx](guides/nginx-ja4.md)
 - [Tuning](guides/tuning.md)
 

@@ -95,7 +95,28 @@ anyone who can keep the identity stable.
 `{:tarpit, delay: ms}` holds a request before denying it: cheap for the BEAM,
 costly for a scraper waiting on the connection. `tarpit: [max_concurrent:
 1_000, max_delay: 30_000]` bounds how many requests are held at once and for
-how long, since each still holds a connection on your side.
+how long, since each still holds a connection on your side. A tarpit judges
+each request on its own and bans nobody; see
+[Maze or tarpit?](honeypots-and-maze.md#maze-or-tarpit) to choose between the
+two.
+
+## The maze
+
+Rendering a maze page takes around 150 microseconds; the rest of a maze
+response is spent asleep, so its cost is the connection and process it holds
+(a few kilobytes) for up to `:max_duration`. `maze: [max_concurrent: 200]`
+bounds how many are held at once; beyond that, clients get an immediate
+`429`. Raise it if the dashboard shows many refused maze requests and you have
+connections to spare, lower it if your proxy or server limits connections
+tightly. Keep `:max_duration` under your proxy's read timeout.
+
+Longer `:delay`s waste more of a scraper's time per byte; longer pages
+(`:paragraphs`) and more links (`:links`) give it more to crawl. A client in
+the maze only costs you what it holds, so err on the slow side.
+
+`trap: [ban: 86_400]` is how long a trapped prefix stays in the maze. Keep it
+moderate where many people share IPv4 addresses (carrier-grade NAT, offices),
+since a ban covers the whole prefix.
 
 ## The default policy
 

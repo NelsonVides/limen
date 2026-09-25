@@ -24,6 +24,19 @@ defmodule Limen.Test.Policies do
     end
   end
 
+  defmodule Mazing do
+    @moduledoc false
+    use Limen.Policy, signals: [Limen.Signal.HttpShape]
+
+    maze :scraper, when: signal(:ua_family) == :tool, ban: 120
+    score :no_accept_language, 50, when: missing_header("accept-language")
+
+    decide do
+      score >= 50 -> :maze
+      true -> :allow
+    end
+  end
+
   defmodule Limited do
     @moduledoc false
     use Limen.Policy, signals: []
