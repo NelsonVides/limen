@@ -23,7 +23,9 @@
              files: %{
                included: ["lib/"],
                excluded: [
-                 "lib/limen/decision_log/flusher.ex"
+                 "lib/limen/decision_log/flusher.ex",
+                 "lib/limen/state/rotator.ex",
+                 "lib/limen/state/sweeper.ex"
                ]
              }
            ]},

@@ -32,6 +32,20 @@ defmodule Limen.Config do
       * `:flush_interval` - milliseconds between flushes to `Logger`. Defaults
         to `1000`.
       * `:level` - `Logger` level. Defaults to `:info`.
+
+    * `:state` - sizing of the shared state, see `Limen.State`:
+      * `:max_keys` - exact keys per time-window epoch slot. Each window
+        keeps up to three slots. Defaults to `50_000`.
+      * `:sketch_width` and `:sketch_depth` - dimensions of the Count-Min
+        Sketch counting keys beyond `:max_keys`, one per slot. Defaults to
+        `8_192` and `4` (256 KiB per slot).
+      * `:gcra_max_keys` - keys tracked by hard limits. Defaults to
+        `100_000`.
+      * `:max_bans` - concurrent bans. Defaults to `100_000`.
+      * `:sweep_interval` - milliseconds between sweeps of expired bans and
+        idle limits. Defaults to `5_000`.
+
+      Sketch dimensions are read once at startup.
   """
 
   use Boundary, type: :strict, deps: [Logger]
@@ -44,11 +58,21 @@ defmodule Limen.Config do
     level: :info
   }
 
+  @state_defaults %{
+    max_keys: 50_000,
+    sketch_width: 8_192,
+    sketch_depth: 4,
+    gcra_max_keys: 100_000,
+    max_bans: 100_000,
+    sweep_interval: 5_000
+  }
+
   @defaults %{
     mode: :dry_run,
     ipv4_prefix: 32,
     ipv6_prefix: 64,
-    decision_log: @decision_log_defaults
+    decision_log: @decision_log_defaults,
+    state: @state_defaults
   }
 
   @type t :: %{atom() => term()}
@@ -124,6 +148,10 @@ defmodule Limen.Config do
       :level, value ->
         value in Logger.levels()
     end)
+  end
+
+  defp validate(:state, opts, _config) when is_list(opts) do
+    merge_known(@state_defaults, opts, fn _key, value -> is_integer(value) and value > 0 end)
   end
 
   defp validate(key, value, _config) when is_map_key(@defaults, key),

@@ -26,6 +26,42 @@ defmodule Limen.PlugTest do
     end
   end
 
+  describe "bans" do
+    test "an enforced ban denies the request", %{limen: limen} do
+      Limen.ban(limen, {127, 0, 0, 1}, 60, reason: :manual)
+      conn = conn(:get, "/") |> Limen.Plug.call(Limen.Plug.init(instance: limen, mode: :enforce))
+
+      assert conn.halted
+      assert conn.status == 403
+      assert %Decision{action: :deny, stage: :ban, enforced: true} = Limen.decision(conn)
+      assert Decision.explain(Limen.decision(conn)) =~ "ban banned when prefix is banned"
+    end
+
+    test "a ban created in dry-run mode is reported but not enforced", %{limen: limen} do
+      Limen.ban(limen, {127, 0, 0, 1}, 60, mode: :dry_run)
+      conn = conn(:get, "/") |> Limen.Plug.call(Limen.Plug.init(instance: limen, mode: :enforce))
+
+      refute conn.halted
+      assert %Decision{action: :deny, stage: :ban, enforced: false} = Limen.decision(conn)
+    end
+
+    test "dry-run routes do not enforce bans", %{limen: limen} do
+      Limen.ban(limen, {127, 0, 0, 1}, 60)
+      conn = conn(:get, "/") |> Limen.Plug.call(Limen.Plug.init(instance: limen))
+
+      refute conn.halted
+      assert %Decision{action: :deny, mode: :dry_run, enforced: false} = Limen.decision(conn)
+    end
+
+    test "bans are per instance", %{limen: limen} do
+      start_supervised!({Limen, name: :limen_plug_other_instance})
+      Limen.ban(limen, {127, 0, 0, 1}, 60)
+
+      refute Limen.banned(:limen_plug_other_instance, {127, 0, 0, 1})
+      assert Limen.banned(limen, {127, 0, 0, 1})
+    end
+  end
+
   test "the mode can be changed at runtime", %{limen: limen} do
     Limen.set_mode(limen, :enforce)
     conn = conn(:get, "/") |> Limen.Plug.call(Limen.Plug.init(instance: limen))

@@ -21,7 +21,9 @@ defmodule Limen.Supervisor do
   def init({name, config}) do
     children = [
       {Limen.Owner, {name, config, self()}},
-      {Limen.DecisionLog.Flusher, name}
+      {Limen.DecisionLog.Flusher, name},
+      {Limen.State.Rotator, name},
+      {Limen.State.Sweeper, name}
     ]
 
     Supervisor.init(children, strategy: :rest_for_one)

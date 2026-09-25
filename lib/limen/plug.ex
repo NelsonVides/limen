@@ -31,6 +31,8 @@ defmodule Limen.Plug do
   @behaviour Plug
 
   alias Limen.{Context, Decision, Instance}
+  alias Limen.Decision.Match
+  alias Limen.State.BanList
 
   @impl true
   def init(opts) do
@@ -66,16 +68,34 @@ defmodule Limen.Plug do
 
     ctx = identify(Context.from_conn(conn, instance), config)
 
-    decision = %Decision{
-      instance: name,
-      action: :allow,
-      stage: :decide,
-      mode: mode || config.mode
-    }
-
-    decision
+    ctx
+    |> evaluate(mode || config.mode)
     |> finalize(ctx, started)
     |> act(conn, instance)
+  end
+
+  defp evaluate(ctx, mode) do
+    case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
+      nil -> %Decision{action: :allow, stage: :decide, mode: mode}
+      ban -> banned(ban, mode)
+    end
+  end
+
+  # A ban created in dry-run mode is reported but never enforced.
+  defp banned(ban, mode) do
+    match = %Match{
+      name: :banned,
+      kind: :ban,
+      condition: "prefix is banned",
+      observed: [{"reason", ban.reason}, {"origin", ban.origin}, {"expires_at", ban.expires_at}]
+    }
+
+    %Decision{
+      action: :deny,
+      stage: :ban,
+      mode: if(mode == :enforce and ban.mode == :enforce, do: :enforce, else: :dry_run),
+      matches: [match]
+    }
   end
 
   defp identify(ctx, config) do
@@ -85,7 +105,8 @@ defmodule Limen.Plug do
   defp finalize(decision, ctx, started) do
     %{
       decision
-      | enforced: decision.mode == :enforce and decision.action != :allow,
+      | instance: ctx.instance.name,
+        enforced: decision.mode == :enforce and decision.action != :allow,
         signals: ctx.signals,
         evidence: ctx.evidence,
         identity: Context.identity(ctx),

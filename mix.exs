@@ -65,7 +65,8 @@ defmodule Limen.MixProject do
         "dialyzer",
         "docs --warnings-as-errors",
         "cmd env MIX_ENV=test mix test --warnings-as-errors"
-      ]
+      ],
+      bench: "run bench/run.exs"
     ]
   end
 
@@ -86,7 +87,21 @@ defmodule Limen.MixProject do
       groups_for_modules: [
         Gate: [Limen, Limen.Plug, Limen.Context, Limen.Decision, Limen.Decision.Match],
         Configuration: [Limen.Config],
-        Observability: [Limen.Telemetry, Limen.DecisionLog, Limen.Stats],
+        State: [
+          Limen.State,
+          Limen.State.Window,
+          Limen.State.Gcra,
+          Limen.State.BanList,
+          Limen.State.Rotator,
+          Limen.State.Sweeper
+        ],
+        Sketches: [Limen.Sketch, Limen.Sketch.CountMin],
+        Observability: [
+          Limen.Telemetry,
+          Limen.DecisionLog,
+          Limen.DecisionLog.Flusher,
+          Limen.Stats
+        ],
         Utilities: [Limen.IP]
       ]
     ]

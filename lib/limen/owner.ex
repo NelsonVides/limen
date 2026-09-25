@@ -11,7 +11,7 @@ defmodule Limen.Owner do
 
   use GenServer
 
-  alias Limen.{DecisionLog, Instance, Stats}
+  alias Limen.{DecisionLog, Instance, State, Stats}
 
   @doc false
   @spec start_link({atom(), Limen.Config.t(), pid()}) :: GenServer.on_start()
@@ -29,7 +29,8 @@ defmodule Limen.Owner do
         config: config,
         supervisor: supervisor,
         stats: Stats.new(),
-        log: DecisionLog.new(config)
+        log: DecisionLog.new(config),
+        state: State.new(config)
       })
 
       {:ok, name}

@@ -55,12 +55,15 @@ defmodule Limen do
       Instance,
       IP,
       Plug,
+      State,
+      {State, []},
       Stats,
       Supervisor,
       Telemetry
     ]
 
-  alias Limen.Instance
+  alias Limen.{Instance, IP}
+  alias Limen.State.BanList
 
   @type instance :: atom()
 
@@ -104,6 +107,70 @@ defmodule Limen do
   """
   @spec decision(Plug.Conn.t()) :: Limen.Decision.t() | nil
   def decision(%Plug.Conn{private: private}), do: Map.get(private, :limen)
+
+  @doc """
+  Bans a client for `ttl` seconds.
+
+  `target` is an address (tuple or string), which is aggregated to its prefix
+  like any request would be, or a prefix in CIDR notation whose length matches
+  the instance's aggregation (`:ipv4_prefix` or `:ipv6_prefix`). To block
+  arbitrary ranges, use a policy rule with a list instead.
+
+  Options are those of `Limen.State.BanList.ban/4`; `:origin` defaults to
+  `:admin`.
+  """
+  @spec ban(instance(), :inet.ip_address() | String.t() | IP.prefix(), pos_integer(), keyword()) ::
+          :ok | {:error, :full}
+  def ban(instance, target, ttl, opts \\ []) do
+    instance = Instance.fetch!(instance)
+    prefix = to_prefix!(instance, target)
+    BanList.ban(instance, prefix, ttl, Keyword.put_new(opts, :origin, :admin))
+  end
+
+  @doc """
+  Lifts a ban. Accepts the same targets as `ban/4`.
+  """
+  @spec unban(instance(), :inet.ip_address() | String.t() | IP.prefix()) :: :ok
+  def unban(instance, target) do
+    instance = Instance.fetch!(instance)
+    BanList.unban(instance, to_prefix!(instance, target))
+  end
+
+  @doc """
+  Returns the active ban covering `target`, if any.
+  """
+  @spec banned(instance(), :inet.ip_address() | String.t() | IP.prefix()) :: BanList.ban() | nil
+  def banned(instance, target) do
+    instance = Instance.fetch!(instance)
+    BanList.lookup(instance, to_prefix!(instance, target), System.system_time(:millisecond))
+  end
+
+  defp to_prefix!(%Instance{config: config}, {version, n, length} = prefix)
+       when version in [4, 6] and is_integer(n) and is_integer(length) do
+    expected = if version == 4, do: config.ipv4_prefix, else: config.ipv6_prefix
+
+    if length != expected do
+      raise ArgumentError,
+            "cannot ban #{IP.prefix_to_string(prefix)}: bans apply to /#{expected} prefixes " <>
+              "for IPv#{version}, use a policy list to block other ranges"
+    end
+
+    prefix
+  end
+
+  defp to_prefix!(%Instance{config: config}, ip) when is_tuple(ip) do
+    IP.prefix(ip, config.ipv4_prefix, config.ipv6_prefix)
+  end
+
+  defp to_prefix!(instance, string) when is_binary(string) do
+    with :error <- IP.parse(string),
+         :error <- IP.parse_cidr(string) do
+      raise ArgumentError, "expected an IP address or CIDR prefix, got: #{inspect(string)}"
+    else
+      {:ok, {_version, _n, _length} = prefix} -> to_prefix!(instance, prefix)
+      {:ok, ip} -> to_prefix!(instance, ip)
+    end
+  end
 
   @doc """
   Switches an instance between `:dry_run` and `:enforce` at runtime.

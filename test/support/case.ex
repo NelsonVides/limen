@@ -2,7 +2,8 @@ defmodule Limen.Case do
   @moduledoc """
   Test case starting an isolated `Limen` instance for every test.
 
-  The instance's name is in the test context as `:limen`, and its
+  The instance's name is in the test context as `:limen` and the running
+  `Limen.Instance` as `:instance`; its
   configuration is the test defaults plus any `@moduletag config: [...]` or
   `@tag config: [...]` overrides. Instances share nothing, so tests using this
   case can run concurrently.
@@ -25,7 +26,7 @@ defmodule Limen.Case do
     name = :"limen_test_#{System.unique_integer([:positive])}"
     config = Keyword.merge(@defaults, Map.get(context, :config, []))
     start_supervised!({Limen, name: name, config: config})
-    %{limen: name}
+    %{limen: name, instance: instance(name)}
   end
 
   @doc """

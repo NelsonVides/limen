@@ -16,14 +16,15 @@ defmodule Limen.Instance do
   use Boundary, type: :strict, deps: [Limen.Config]
 
   @enforce_keys [:name, :config]
-  defstruct [:name, :config, :supervisor, :stats, :log]
+  defstruct [:name, :config, :supervisor, :stats, :log, :state]
 
   @type t :: %__MODULE__{
           name: atom(),
           config: Limen.Config.t(),
           supervisor: pid() | nil,
           stats: :counters.counters_ref() | nil,
-          log: map() | nil
+          log: map() | nil,
+          state: map() | nil
         }
 
   @doc """
