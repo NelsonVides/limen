@@ -28,6 +28,22 @@ defmodule Limen.Signal.AsnTest do
     assert %{asn: 15_169} = Asn.lookup(limen, {8, 8, 8, 8})
   end
 
+  test "recognises gzip by its content, and skips malformed lines", %{limen: limen} do
+    dir = Path.join(System.tmp_dir!(), "limen-asn-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    plain = Path.join(dir, "plain.part")
+    File.write!(plain, "malformed\n" <> File.read!(@fixture) <> "1.2.3.4\tnot\ta row\n")
+    gzipped = Path.join(dir, "gzipped.part")
+    File.write!(gzipped, :zlib.gzip(File.read!(plain)))
+
+    for file <- [plain, gzipped] do
+      assert {:ok, 4} = Loader.load(limen, file)
+      assert %{asn: 64_500} = Asn.lookup(limen, {0x2001, 0xDB8, 0, 0, 0, 0, 0, 1})
+    end
+  end
+
   test "a reload replaces the table", %{limen: limen} do
     {:ok, 1} = Loader.load_rows(limen, [{"8.8.8.0", "8.8.8.255", 15_169, "US", "GOOGLE"}])
     {:ok, 1} = Loader.load_rows(limen, [{"8.8.4.0", "8.8.4.255", 15_169, "US", "GOOGLE"}])

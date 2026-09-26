@@ -19,6 +19,10 @@ First release.
   `decide`, compile-time validation and per-rule explanations.
 - Proof-of-work challenges with stateless tokens, a vendored solver,
   single-use tokens, pass cookies and a no-JavaScript fallback.
+- IP-to-ASN data packed into a single `:persistent_term` entry, about 10 MB
+  for the full iptoasn.com data, and optionally downloaded and kept current
+  from a URL on a configurable schedule: frequency, jitter, UTC time windows,
+  and postponement while the node is busy.
 - Lock-free state: sliding windows, GCRA limits, bans, Count-Min Sketch,
   Bloom filters and HyperLogLog, all with bounded memory.
 - LiveView and socket gating, cluster ban propagation and a LiveDashboard

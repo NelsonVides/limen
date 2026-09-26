@@ -4,6 +4,7 @@ defmodule Limen.DashboardPageTest do
   import Phoenix.ConnTest
   import Phoenix.LiveViewTest
 
+  alias Limen.Signal.Asn.Loader
   alias Limen.Test.DashboardApp
   alias Limen.Test.DashboardApp.Endpoint
 
@@ -39,6 +40,14 @@ defmodule Limen.DashboardPageTest do
     assert html =~ "Decisions per second"
     assert html =~ "Busiest prefixes, this minute"
     assert html =~ "198.51.100.3/32"
+    assert html =~ "IP-to-ASN data"
+    assert html =~ "none loaded"
     assert render(view) =~ "Recent sampled decisions"
+
+    {:ok, 1} =
+      Loader.load_rows(name, [{"8.8.8.0", "8.8.8.255", 15_169, "US", "GOOGLE"}])
+
+    {:ok, _view, html} = live(build_conn(), "/dashboard/limen")
+    assert html =~ ~r/Loaded.*s ago from rows/s
   end
 end

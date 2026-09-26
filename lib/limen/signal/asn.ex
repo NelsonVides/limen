@@ -10,16 +10,40 @@ defmodule Limen.Signal.Asn do
   automated than traffic from residential and mobile networks. This signal
   looks the client address up in an IP-to-ASN table and classifies the ASN.
 
-  The table lives in an ETS `ordered_set` keyed by range start, so a lookup
-  is one `:ets.prev/2` and one `:ets.lookup/2`. It is loaded off the request
-  path by `Limen.Signal.Asn.Loader` from the `:file` option of the `:asn`
-  configuration, in the format of the [iptoasn.com][iptoasn]
-  `ip2asn-combined.tsv` dataset (optionally gzipped):
+  ## Data
+
+  The data comes in the format of the [iptoasn.com][iptoasn]
+  `ip2asn-combined.tsv` dataset, gzipped or not:
 
       range_start<TAB>range_end<TAB>asn<TAB>country<TAB>description
 
-  The full dataset has around 700,000 ranges and takes in the order of
-  100 MB of memory.
+  It is packed into a single `:persistent_term` entry (see
+  `Limen.Signal.Asn.Table`): the full dataset, about 580,000 routed ranges,
+  takes about 10 MB, and a lookup is a few hundred nanoseconds of binary
+  matching, without copying the table or taking a lock.
+
+  `Limen.Signal.Asn.Loader` loads it off the request path, from the `:file`
+  of the `:asn` configuration, and with a `:url` also keeps it current:
+
+      config :my_app, Limen,
+        asn: [
+          file: "/var/lib/my_app/ip2asn-combined.tsv.gz",
+          url: "https://iptoasn.com/data/ip2asn-combined.tsv.gz",
+          refresh: [
+            every: :timer.hours(24),
+            window: {~T[01:00:00], ~T[05:00:00]},
+            max_utilization: 0.8
+          ]
+        ]
+
+  The file is where downloads are kept, so a node that starts loads the last
+  data it had without waiting for the network, and checks for new data on
+  schedule: once a day here, at a random time between 01:00 and 05:00 UTC,
+  unless its schedulers are busier than 80%. See the `:asn` options of
+  `Limen.Config` and `Limen.Signal.Asn.Schedule`.
+
+  iptoasn.com publishes its data in the public domain. Any source in the
+  same format works, such as a file your own pipeline writes.
 
   ## Classification
 
@@ -37,7 +61,8 @@ defmodule Limen.Signal.Asn do
 
   @behaviour Limen.Signal
 
-  alias Limen.{Context, IP}
+  alias Limen.Context
+  alias Limen.Signal.Asn.Table
 
   # Large cloud and hosting providers. Deliberately conservative: an ASN
   # belongs here only when most of its traffic is servers, not people.
@@ -79,7 +104,7 @@ defmodule Limen.Signal.Asn do
              9009
            ])
 
-  @type entry :: %{asn: pos_integer(), country: String.t(), name: String.t()}
+  @type entry :: Table.entry()
 
   @impl true
   def provides, do: [:asn, :asn_kind, :asn_country, :asn_name]
@@ -110,26 +135,8 @@ defmodule Limen.Signal.Asn do
   def lookup(instance, ip) do
     case published(instance) do
       nil -> nil
-      {ranges, names} -> find(ranges, names, IP.to_integer(ip))
+      table -> Table.lookup(table, ip)
     end
-  end
-
-  defp find(ranges, names, {version, n}) do
-    with {^version, _start} = start <- :ets.prev(ranges, {version, n + 1}),
-         [{^start, last, asn, country}] when n <= last <- :ets.lookup(ranges, start) do
-      name =
-        case :ets.lookup(names, asn) do
-          [{^asn, name}] -> name
-          [] -> nil
-        end
-
-      %{asn: asn, country: country, name: name}
-    else
-      _no_range -> nil
-    end
-  rescue
-    # The table was replaced by a reload while this lookup was running.
-    ArgumentError -> nil
   end
 
   @doc """
@@ -143,10 +150,12 @@ defmodule Limen.Signal.Asn do
   end
 
   # Kept apart from the instance itself, so that loading data does not
-  # republish the whole instance.
+  # republish the whole instance. The table is almost all refcounted
+  # binaries, so replacing it leaves only a few words in the literal area for
+  # processes to be checked against.
   @doc false
-  @spec publish(atom(), {:ets.table(), :ets.table()}) :: :ok
-  def publish(instance, tables), do: :persistent_term.put({__MODULE__, instance}, tables)
+  @spec publish(atom(), Table.t()) :: :ok
+  def publish(instance, table), do: :persistent_term.put({__MODULE__, instance}, table)
 
   @doc false
   @spec unpublish(atom()) :: :ok
@@ -156,6 +165,6 @@ defmodule Limen.Signal.Asn do
   end
 
   @doc false
-  @spec published(atom()) :: {:ets.table(), :ets.table()} | nil
+  @spec published(atom()) :: Table.t() | nil
   def published(instance), do: :persistent_term.get({__MODULE__, instance}, nil)
 end

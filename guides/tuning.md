@@ -46,6 +46,51 @@ the GCRA table is full, new keys are not limited. When the ban list is full,
 new bans are refused. Each case increments the `:saturated` counter shown on
 the dashboard; if it keeps rising outside attacks, raise the caps.
 
+## IP-to-ASN data
+
+The full [iptoasn.com][iptoasn] data, about 580,000 routed ranges, takes
+about 10 MB in each instance that loads it, in a single `:persistent_term`
+entry of binaries. A lookup takes a few hundred nanoseconds and copies
+nothing. Loading or refreshing the data takes a few seconds of one scheduler
+and about 90 MB more memory for that time, in a process of its own.
+
+With a `:url`, each node keeps the data current by itself: the file is where
+downloads are kept, so a node that restarts loads what it had and does not
+wait for the network. iptoasn.com updates its data every hour, but ranges
+change slowly, so the default daily check is plenty. A check that finds
+nothing new costs one small request.
+
+```elixir
+config :my_app, Limen,
+  asn: [
+    file: "/var/lib/my_app/ip2asn-combined.tsv.gz",
+    url: "https://iptoasn.com/data/ip2asn-combined.tsv.gz",
+    refresh: [
+      every: :timer.hours(24),
+      jitter: 0.25,
+      window: {~T[02:00:00], ~T[05:00:00]},
+      max_utilization: 0.75,
+      max_memory: 6 * 1024 ** 3
+    ]
+  ]
+```
+
+- `:jitter` spreads nodes out: each waits up to that share of `:every` more,
+  at random.
+- `:window` keeps checks to quiet hours (UTC); a check due outside it moves
+  to a random time inside the next one. Several windows can be given as a
+  list.
+- `:max_utilization` (0.9 by default) and `:max_memory` postpone a
+  scheduled check while the node is busy, by `:retry` at a time. The
+  scheduler utilization is sampled for a second before each check.
+- A failed or implausible download (less than half the ranges already
+  loaded) keeps the current data and is retried after `:retry`, doubling up
+  to `:every`.
+
+`Limen.Signal.Asn.Loader.refresh/1` checks at once, and the dashboard shows
+what is loaded, the last check and the next one. The `[:limen, :asn, :loaded]`
+and `[:limen, :asn, :checked]` telemetry events report every load and check.
+
 ## Rates and limits
 
 `rate(dimension, per: window)` in a policy is a sliding-window estimate over
@@ -153,3 +198,4 @@ native time units as `duration`.
 [HyperLogLog]: https://doi.org/10.46298/dmtcs.3545
 [GCRA]: https://www.itu.int/rec/T-REC-I.371
 [SHA-256]: https://csrc.nist.gov/pubs/fips/180-4/upd1/final
+[iptoasn]: https://iptoasn.com/

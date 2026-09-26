@@ -15,11 +15,13 @@ defmodule Limen.Bench.Scenarios do
   receive the instance, as the request path does after its single lookup.
   """
 
+  import Bitwise
   import Plug.Test
 
   alias Limen.Challenge.{Pass, Token}
   alias Limen.{Context, Policy, Signal}
-  alias Limen.Signal.HttpShape
+  alias Limen.Signal.{Asn, HttpShape}
+  alias Limen.Signal.Asn.Table
   alias Limen.State.{BanList, Gcra, Window}
 
   @batch 100
@@ -48,6 +50,7 @@ defmodule Limen.Bench.Scenarios do
     state()
     |> Map.merge(plug())
     |> Map.merge(maze())
+    |> Map.merge(asn())
     |> Map.new(fn
       {name, {fun, config}} -> {name, job(fun, config, & &1)}
       {name, {fun, config, prepare}} -> {name, job(fun, config, prepare)}
@@ -190,6 +193,68 @@ defmodule Limen.Bench.Scenarios do
 
     %{"maze: render page" => {render, [trap: [paths: ["/archive"]]]}}
   end
+
+  # Lookups in a synthetic table as dense as the iptoasn.com data: 450,000
+  # IPv4 and 120,000 IPv6 ranges, built once and published into each
+  # scenario's instance.
+  defp asn do
+    lookup = fn {name, pick} -> Asn.lookup(name, pick.()) end
+
+    %{
+      "signals: asn lookup, ipv4" => {lookup, [], &asn_prepare(&1, 4)},
+      "signals: asn lookup, ipv6" => {lookup, [], &asn_prepare(&1, 6)}
+    }
+  end
+
+  defp asn_prepare(instance, version) do
+    :ok = Asn.publish(instance.name, asn_table())
+    addresses = asn_addresses(version)
+    counter = :counters.new(1, [:write_concurrency])
+    {instance.name, fn -> next(addresses, counter) end}
+  end
+
+  defp next(pool, counter) do
+    :counters.add(counter, 1, 1)
+    elem(pool, rem(:counters.get(counter, 1), tuple_size(pool)))
+  end
+
+  defp asn_table do
+    with nil <- :persistent_term.get({__MODULE__, :asn_table}, nil) do
+      :rand.seed(:exsss, 1)
+      v4 = asn_rows(4, 450_000, 16_777_216, 256..8_192)
+      v6 = asn_rows(6, 120_000, 0x2001 <<< 112, (1 <<< 64)..(1 <<< 80))
+      {:ok, table} = Table.from_rows(v4 ++ v6)
+      :persistent_term.put({__MODULE__, :asn_table}, table)
+      table
+    end
+  end
+
+  defp asn_rows(version, count, start, sizes) do
+    {rows, _next} =
+      Enum.map_reduce(1..count, start, fn n, first ->
+        last = first + Enum.random(sizes)
+        asn = rem(n, 80_000) + 1
+        row = {asn_address(version, first), asn_address(version, last), asn, "US", "AS#{asn}"}
+        {row, last + 1 + Enum.random([0, 0, 0, 256])}
+      end)
+
+    rows
+  end
+
+  defp asn_address(version, n), do: to_string(:inet.ntoa(asn_ip(n, version)))
+
+  defp asn_ip(n, 4), do: {n >>> 24 &&& 255, n >>> 16 &&& 255, n >>> 8 &&& 255, n &&& 255}
+  defp asn_ip(n, 6), do: List.to_tuple(for shift <- 112..0//-16, do: n >>> shift &&& 0xFFFF)
+
+  defp asn_addresses(4),
+    do:
+      List.to_tuple(for _n <- 1..10_000, do: asn_ip(16_777_216 + :rand.uniform(2_000_000_000), 4))
+
+  defp asn_addresses(6),
+    do:
+      List.to_tuple(
+        for _n <- 1..10_000, do: asn_ip((0x2001 <<< 112) + :rand.uniform(1 <<< 96), 6)
+      )
 
   defp with_client(conn, n) do
     address = "203.0.#{div(n, 256)}.#{rem(n, 256)}"

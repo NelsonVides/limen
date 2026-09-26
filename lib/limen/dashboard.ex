@@ -58,6 +58,11 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
           <.fields_card title="State" fields={state_fields(@snapshot)} />
         </:col>
       </.row>
+      <.row>
+        <:col>
+          <.fields_card title="IP-to-ASN data" fields={asn_fields(@snapshot.asn)} />
+        </:col>
+      </.row>
       <.live_table
         id="limen-prefixes"
         dom_id="limen-prefixes"
@@ -170,5 +175,46 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         {"State memory", "#{Float.round(snapshot.memory / 1_048_576, 1)} MiB"}
       ]
     end
+
+    defp asn_fields(%{ranges: nil} = asn), do: [{"Ranges", "none loaded"} | check_fields(asn)]
+
+    defp asn_fields(asn) do
+      [
+        {"Ranges", asn.ranges},
+        {"Memory", "#{Float.round(asn.bytes / 1_048_576, 1)} MiB"},
+        {"Loaded", "#{ago(asn.loaded_at)} from #{source(asn.source)}"}
+        | check_fields(asn)
+      ]
+    end
+
+    defp check_fields(%{busy: true}), do: [{"Loader", "busy loading or checking"}]
+
+    defp check_fields(asn) do
+      [
+        {"Last check", last_check(asn.last_check, asn.failures)},
+        {"Next check", if(asn.next_check, do: from_now(asn.next_check), else: "never")}
+      ]
+    end
+
+    defp last_check(nil, _failures), do: "none yet"
+
+    defp last_check(%{at: at, result: result}, failures) do
+      failed = if failures > 1, do: ", #{failures} failures in a row", else: ""
+      "#{ago(at)}: #{outcome(result)}#{failed}"
+    end
+
+    defp outcome({kind, reason}), do: "#{kind} (#{inspect(reason)})"
+    defp outcome(result), do: to_string(result)
+
+    defp source({_kind, location}), do: location
+    defp source(:rows), do: "rows"
+
+    defp ago(at), do: "#{duration(System.system_time(:millisecond) - at)} ago"
+    defp from_now(at), do: "in #{duration(at - System.system_time(:millisecond))}"
+
+    defp duration(ms) when ms < 60_000, do: "#{max(div(ms, 1_000), 0)} s"
+    defp duration(ms) when ms < 3_600_000, do: "#{div(ms, 60_000)} min"
+    defp duration(ms) when ms < 172_800_000, do: "#{div(ms, 3_600_000)} h"
+    defp duration(ms), do: "#{div(ms, 86_400_000)} days"
   end
 end

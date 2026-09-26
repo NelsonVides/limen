@@ -26,7 +26,7 @@ defmodule Limen.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :crypto, :eex]
+      extra_applications: [:logger, :crypto, :eex, :inets, :ssl]
     ]
   end
 
@@ -157,6 +157,9 @@ defmodule Limen.MixProject do
           Limen.Signal.Behaviour,
           Limen.Signal.Asn,
           Limen.Signal.Asn.Loader,
+          Limen.Signal.Asn.Table,
+          Limen.Signal.Asn.Schedule,
+          Limen.Signal.Asn.Download,
           Limen.Signal.Fcrdns,
           Limen.Signal.Fcrdns.DNS,
           Limen.Signal.Fcrdns.InetRes,

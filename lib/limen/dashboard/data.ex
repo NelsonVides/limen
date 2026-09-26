@@ -8,6 +8,7 @@ defmodule Limen.Dashboard.Data do
   """
 
   alias Limen.{DecisionLog, Instance, IP, State, Stats, Tarpit}
+  alias Limen.Signal.Asn
   alias Limen.State.{BanList, Window}
 
   @doc """
@@ -25,8 +26,19 @@ defmodule Limen.Dashboard.Data do
       bans: length(BanList.list(instance)),
       tarpitted: Tarpit.held(instance),
       in_maze: :atomics.get(instance.maze, 1),
-      memory: Enum.sum(Map.values(State.memory(instance)))
+      memory: Enum.sum(Map.values(State.memory(instance))),
+      asn: asn(name)
     }
+  end
+
+  # The loader may be busy downloading or building a table for a while;
+  # the loaded table's own description is always at hand.
+  defp asn(name) do
+    Asn.Loader.status(name, 500)
+  catch
+    :exit, _busy ->
+      table = Asn.published(name) || %{ranges: nil, bytes: nil, loaded_at: nil, source: nil}
+      Map.put(Map.take(table, [:ranges, :bytes, :loaded_at, :source]), :busy, true)
   end
 
   @doc """

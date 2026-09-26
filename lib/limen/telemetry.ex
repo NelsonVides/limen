@@ -42,6 +42,18 @@ defmodule Limen.Telemetry do
       * Measurements: `:cleared` (entries dropped).
       * Metadata: `:window`, `:epoch`.
 
+    * `[:limen, :asn, :loaded]` - IP-to-ASN data was loaded, see
+      `Limen.Signal.Asn.Loader`.
+      * Measurements: `:duration` (native time units, building included),
+        `:ranges`, `:bytes`.
+      * Metadata: `:source` (`{:file, path}`, `{:url, url}` or `:rows`).
+
+    * `[:limen, :asn, :checked]` - the `:url` was checked for new data.
+      * Measurements: `:duration` (native time units).
+      * Metadata: `:url`, `:result` (`:updated`, `:unchanged`, `:postponed`
+        or `:error`) and `:reason` (why it was postponed or failed, else
+        `nil`).
+
     * `[:limen, :fcrdns, :resolved]` - a crawler verification finished.
       * Measurements: `:duration` (native time units).
       * Metadata: `:ip`, `:result`, `:host`.

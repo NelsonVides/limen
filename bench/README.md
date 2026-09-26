@@ -56,6 +56,31 @@ response, which then spends seconds asleep:
 |---|---|---|
 | maze: render page | 141 µs | 161 µs |
 
+### IP-to-ASN data in `:persistent_term`
+
+Lookups in a synthetic table as dense as the iptoasn.com data (450,000 IPv4
+and 120,000 IPv6 ranges), each picking the next of 10,000 addresses. Every
+other scenario stayed within noise.
+
+| Scenario | Median | p99 |
+|---|---|---|
+| signals: asn lookup, ipv4 | 181 ns | 334 ns |
+| signals: asn lookup, ipv6 | 345 ns | 579 ns |
+
+Against the ETS tables they replace, on the real data (580,830 ranges) and
+random addresses inside routed ranges. With 14 processes looking up at once,
+times are wall time per lookup: the ETS tables serve about twice as many
+lookups per second as with one process, the packed table about seven times
+as many.
+
+| | ETS | Packed |
+|---|---|---|
+| memory | 85 MB | 9.7 MB |
+| IPv4 lookup, one process | 876 ns | 255 ns |
+| IPv6 lookup, one process | 1,070 ns | 325 ns |
+| IPv4 lookup, 14 processes | 453 ns | 37 ns |
+| IPv6 lookup, 14 processes | 451 ns | 54 ns |
+
 ### M1: state layer
 
 | Scenario | Median | p99 |

@@ -187,7 +187,8 @@ Instances of the same name on different nodes share their bans. See
 
 - Write your own policy: `Limen.Policy`.
 - Load IP-to-[ASN] data (which network, such as a cloud provider's, each
-  address belongs to) so hosting providers can be scored: `Limen.Signal.Asn`.
+  address belongs to), and keep it current, so hosting providers can be
+  scored: `Limen.Signal.Asn`.
 - Catch scrapers with hidden links and form fields, and send them to the
   maze: [Honeypots and the maze](honeypots-and-maze.md).
 - Forward JA4 fingerprints from your TLS terminator: [JA4 behind nginx](nginx-ja4.md).

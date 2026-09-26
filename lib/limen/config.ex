@@ -57,7 +57,32 @@ defmodule Limen.Config do
 
     * `:asn` - IP to ASN data, see `Limen.Signal.Asn`:
       * `:file` - an [iptoasn.com][iptoasn] `ip2asn-combined.tsv` file (optionally
-        gzipped) loaded at startup. Defaults to `nil`.
+        gzipped) loaded at startup. With `:url`, where downloads are kept.
+        Defaults to `nil`.
+      * `:url` - where to download the data from and check it for changes,
+        such as `"https://iptoasn.com/data/ip2asn-combined.tsv.gz"`. Needs a
+        `:file`. Checks ask for data newer than the file, so when changing
+        the `:url` to another source, remove the file or change `:file` too.
+        Defaults to `nil`: no downloads.
+      * `:refresh` - when to check the `:url`, see
+        `Limen.Signal.Asn.Schedule`:
+        * `:every` - milliseconds between checks, at least a minute.
+          Defaults to a day.
+        * `:jitter` - up to this share of `:every` is added to each wait at
+          random, so nodes do not check together. Defaults to `0.1`.
+        * `:window` - a `{from, to}` pair of `Time`s (UTC), or a list of
+          them, outside which scheduled checks do not run; `to` before
+          `from` runs over midnight. Defaults to `nil`: any time.
+        * `:max_utilization` - postpone a scheduled check while the BEAM's
+          schedulers are busier than this share, between `0` and `1`.
+          Defaults to `0.9`; `nil` does not check.
+        * `:max_memory` - postpone a scheduled check while the BEAM uses
+          more than this many bytes. Defaults to `nil`: no limit.
+        * `:retry` - milliseconds before trying a postponed check again, and
+          a failed one, doubling with each failure up to `:every`. Defaults
+          to ten minutes.
+        * `:timeout` - milliseconds a download may take. Defaults to five
+          minutes.
       * `:hosting` - additional ASNs classified as hosting providers, on top
         of the built-in list.
 
@@ -191,7 +216,17 @@ defmodule Limen.Config do
     hll_precision: 12
   }
 
-  @asn_defaults %{file: nil, hosting: []}
+  @asn_refresh_defaults %{
+    every: 86_400_000,
+    jitter: 0.1,
+    window: nil,
+    max_utilization: 0.9,
+    max_memory: nil,
+    retry: 600_000,
+    timeout: 300_000
+  }
+
+  @asn_defaults %{file: nil, url: nil, hosting: [], refresh: @asn_refresh_defaults}
 
   @fcrdns_crawlers %{
     "googlebot" => ["googlebot.com", "google.com"],
@@ -358,10 +393,14 @@ defmodule Limen.Config do
     do: {:ok, String.downcase(header)}
 
   defp validate(:asn, opts, _config) when is_list(opts) do
-    merge_known(@asn_defaults, opts, fn
-      :file, file -> is_nil(file) or is_binary(file)
-      :hosting, asns -> is_list(asns) and Enum.all?(asns, &(is_integer(&1) and &1 > 0))
-    end)
+    {refresh, opts} = Keyword.pop(opts, :refresh, [])
+
+    with {:ok, asn} <- merge_known(@asn_defaults, opts, &valid_asn?/2),
+         {:ok, refresh} <- asn_refresh(refresh) do
+      if asn.url && is_nil(asn.file),
+        do: {:error, "an :asn :url needs a :file to keep the data in"},
+        else: {:ok, %{asn | refresh: refresh}}
+    end
   end
 
   defp validate(:fcrdns, opts, _config) when is_list(opts) do
@@ -483,6 +522,43 @@ defmodule Limen.Config do
   defp valid_trap?(:form_field, name), do: is_binary(name) and name =~ ~r/^[A-Za-z0-9_-]+$/
   defp valid_trap?(:ban, ttl), do: is_integer(ttl) and ttl > 0
   defp valid_trap?(:min_fill_time, ms), do: is_integer(ms) and ms >= 0
+
+  defp asn_refresh(opts) when is_list(opts) do
+    with {:ok, refresh} <- merge_known(@asn_refresh_defaults, opts, &valid_refresh?/2) do
+      {:ok, Map.update!(refresh, :window, &windows/1)}
+    end
+  end
+
+  defp asn_refresh(_opts), do: {:error, "expected :refresh options as a keyword list"}
+
+  defp valid_asn?(:file, file), do: is_nil(file) or is_binary(file)
+  defp valid_asn?(:url, url), do: is_nil(url) or (is_binary(url) and url =~ ~r{^https?://.})
+
+  defp valid_asn?(:hosting, asns),
+    do: is_list(asns) and Enum.all?(asns, &(is_integer(&1) and &1 > 0))
+
+  defp valid_asn?(:refresh, _refresh), do: false
+
+  defp valid_refresh?(:every, every), do: is_integer(every) and every >= 60_000
+  defp valid_refresh?(:jitter, jitter), do: is_number(jitter) and jitter >= 0 and jitter <= 1
+  defp valid_refresh?(:window, nil), do: true
+  defp valid_refresh?(:window, {_from, _to} = window), do: valid_window?(window)
+
+  defp valid_refresh?(:window, [_first | _rest] = windows),
+    do: Enum.all?(windows, &valid_window?/1)
+
+  defp valid_refresh?(:max_utilization, max),
+    do: is_nil(max) or (is_number(max) and max > 0 and max <= 1)
+
+  defp valid_refresh?(:max_memory, max), do: is_nil(max) or (is_integer(max) and max > 0)
+  defp valid_refresh?(key, ms) when key in [:retry, :timeout], do: is_integer(ms) and ms >= 1_000
+  defp valid_refresh?(_key, _value), do: false
+
+  defp valid_window?({%Time{} = from, %Time{} = to}), do: Time.compare(from, to) != :eq
+  defp valid_window?(_window), do: false
+
+  defp windows({_from, _to} = window), do: [window]
+  defp windows(windows), do: windows
 
   defp valid_maze?(:corpus, files), do: is_list(files) and Enum.all?(files, &is_binary/1)
   defp valid_maze?(:bundled_corpus, bundled), do: is_boolean(bundled)

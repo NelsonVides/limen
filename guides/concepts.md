@@ -112,7 +112,7 @@ message.
 | `Limen.State.Rotator` | Clears old window slots, estimates active prefixes |
 | `Limen.State.Sweeper` | Removes expired bans and idle limits |
 | `Limen.Signal.Fcrdns.Resolver` | Verifies crawlers with DNS |
-| `Limen.Signal.Asn.Loader` | Loads the IP-to-ASN data |
+| `Limen.Signal.Asn.Loader` | Loads and refreshes the IP-to-ASN data |
 | `Limen.Challenge.Replay.Rotator` | Ages out solved challenges |
 | `Limen.Cluster` | Broadcasts bans to other nodes |
 | `Limen.DecisionLog.Flusher` | Logs sampled decisions |
