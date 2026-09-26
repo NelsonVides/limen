@@ -8,7 +8,8 @@ defmodule Limen.Signal.Behaviour do
 
     * requests;
     * pages (navigations) and assets (scripts, styles, images, fonts);
-    * distinct paths, deduplicated with a rotating Bloom filter;
+    * distinct paths, deduplicated with a rotating Bloom filter
+      (`Limen.Sketch.RotatingBloom`);
     * `404 Not Found` responses, counted when the response is sent.
 
   The counts share one row per prefix (see `key/1`), so counting a request
@@ -119,8 +120,8 @@ defmodule Limen.Signal.Behaviour do
   @doc """
   Classifies a request as a `:page` navigation, an `:asset` or `:other`.
 
-  Uses `sec-fetch-dest` when the client sends it and the path extension
-  otherwise.
+  Uses [`sec-fetch-dest`](https://www.w3.org/TR/fetch-metadata/#sec-fetch-dest-header)
+  when the client sends it and the path extension otherwise.
   """
   @spec kind(Context.t()) :: :page | :asset | :other
   def kind(%Context{} = ctx) do

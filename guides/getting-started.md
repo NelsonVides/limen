@@ -29,7 +29,8 @@ mix phx.gen.secret 48
 ```
 
 and configure it at runtime, together with the proxies in front of your
-application:
+application as [CIDR] ranges (an address and how many of its leading bits
+must match):
 
 ```elixir
 # config/runtime.exs
@@ -39,10 +40,13 @@ config :my_app, Limen,
   client_ip_header: "x-forwarded-for"
 ```
 
-`trusted_proxies` matters: forwarding headers and the JA4 header are only read
-from those peers, and forwarding chains are walked from the right, so clients
-cannot choose their own address. Without a load balancer, leave both options
-out and Limen uses the connection's peer address.
+`trusted_proxies` matters: forwarding headers (such as
+[`X-Forwarded-For`][X-Forwarded-For], to which each proxy appends the address
+it got the request from) and the JA4 header (a fingerprint of the client's TLS
+handshake, see [JA4 behind nginx](nginx-ja4.md)) are only read from those
+peers, and forwarding chains are walked from the right, so clients cannot
+choose their own address. Without a load balancer, leave both options out and
+Limen uses the connection's peer address.
 
 Every option is documented in `Limen.Config`.
 
@@ -102,8 +106,9 @@ you pass `policy: MyApp.BotPolicy`. With several instances, pass
 `instance: :public` instead of `otp_app:`.
 
 Limen serves its challenge endpoints under `/__limen`. If a
-Content-Security-Policy applies to your whole site, the challenge page sets its
-own; it loads nothing from other origins.
+[Content-Security-Policy][CSP] (a header restricting what a page may load and
+run) applies to your whole site, the challenge page sets its own; it loads
+nothing from other origins.
 
 ## Watch decisions
 
@@ -181,7 +186,8 @@ Instances of the same name on different nodes share their bans. See
 ## Next steps
 
 - Write your own policy: `Limen.Policy`.
-- Load IP-to-ASN data so hosting providers can be scored: `Limen.Signal.Asn`.
+- Load IP-to-[ASN] data (which network, such as a cloud provider's, each
+  address belongs to) so hosting providers can be scored: `Limen.Signal.Asn`.
 - Catch scrapers with hidden links and form fields, and send them to the
   maze: [Honeypots and the maze](honeypots-and-maze.md).
 - Forward JA4 fingerprints from your TLS terminator: [JA4 behind nginx](nginx-ja4.md).
@@ -198,3 +204,8 @@ setup do
   :ok
 end
 ```
+
+[CIDR]: https://www.rfc-editor.org/rfc/rfc4632
+[X-Forwarded-For]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For
+[CSP]: https://www.w3.org/TR/CSP3/
+[ASN]: https://www.rfc-editor.org/rfc/rfc1930

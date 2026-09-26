@@ -36,8 +36,9 @@ config :my_app, Limen, decision_log: [sample_rate: 0.001, non_allow_sample_rate:
 
 For a few days, look at what would have been challenged or denied:
 
-- the Limen page of LiveDashboard shows rates, the busiest prefixes and JA4
-  fingerprints, and recent sampled decisions;
+- the Limen page of LiveDashboard shows rates, the busiest prefixes and [JA4]
+  fingerprints (hashes of each client's TLS handshake), and recent sampled
+  decisions;
 - the decision log has one structured report per sampled decision, with the
   matched rules and every signal;
 - your telemetry handler can count `[:limen, :decision]` events by action and
@@ -58,12 +59,14 @@ Typical causes, and what to do:
   their user agent and address.
 - **Your own API clients**: route API paths to a policy that uses limits and
   keys, not browser heuristics, or turn them off.
-- **Mobile networks with carrier-grade NAT (IPv4)**: many users can share an
-  address. Keep rate thresholds generous for IPv4, or aggregate IPv4 to
-  `/32` (the default) and rely on JA4 and shape more than on rates.
+- **Mobile networks with [carrier-grade NAT][CGNAT] (IPv4)**: many users can
+  share an address. Keep rate thresholds generous for IPv4, or aggregate IPv4
+  to `/32` (the default) and rely on JA4 and shape more than on rates.
 - **Crawlers you want**: verified search engine crawlers are allowed by the
-  default policy once FCrDNS verification completes; add others by name and
-  DNS suffix in the `:fcrdns` configuration.
+  default policy once [FCrDNS] verification completes (forward-confirmed
+  reverse DNS: the address's DNS name must belong to the crawler and resolve
+  back to it); add others by name and DNS suffix in the `:fcrdns`
+  configuration.
 
 ### Trap hits
 
@@ -120,3 +123,7 @@ assistive technologies and text browsers, get through after a five second
 wait instead of being blocked; that costs automated clients time rather than
 CPU. `no_js: :deny` is stricter and shuts those users out: prefer allow-lists
 for the clients you know.
+
+[JA4]: https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4.md
+[CGNAT]: https://www.rfc-editor.org/rfc/rfc6888
+[FCrDNS]: https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot

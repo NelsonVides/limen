@@ -20,8 +20,9 @@ defmodule Limen.State.Window do
   and returns all of them.
 
   Each slot counts up to `:max_keys` keys exactly, a row being one key. After
-  that, new keys are counted in the slot's Count-Min Sketch, whose estimates
-  may overcount but never undercount.
+  that, new keys are counted in the slot's Count-Min Sketch
+  (`Limen.Sketch.CountMin`), whose estimates may overcount but never
+  undercount.
   """
 
   alias Limen.Instance

@@ -6,7 +6,8 @@ defmodule Limen.Signal.ClientIP do
   the configured `:trusted_proxies`. In that case the address is read from the
   configured `:client_ip_header`:
 
-    * `"x-forwarded-for"` and `"forwarded"` are chains each proxy appends to.
+    * [`"x-forwarded-for"`][X-Forwarded-For] and [`"forwarded"`][Forwarded]
+      are chains each proxy appends to.
       They are walked from the right, skipping trusted proxies; the first
       untrusted address is the client. Anything to its left was written by
       the client and is ignored, so sending the header yourself spoofs
@@ -19,6 +20,9 @@ defmodule Limen.Signal.ClientIP do
 
   Provides `:client_ip` and `:prefix`; evidence for `:client_ip` is `:peer`,
   `{:header, name}` or `{:invalid, name}`.
+
+  [X-Forwarded-For]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For
+  [Forwarded]: https://www.rfc-editor.org/rfc/rfc7239
   """
 
   @behaviour Limen.Signal

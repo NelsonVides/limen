@@ -2,8 +2,8 @@ defmodule Limen.Maze.Dice do
   @moduledoc """
   Loaded dice: weighted random choices in constant time.
 
-  A die is built once from outcomes and their weights with Vose's alias
-  method, in integer arithmetic. Rolling it takes a single uniform random
+  A die is built once from outcomes and their weights with
+  [Vose's alias method][Vose], in integer arithmetic. Rolling it takes a single uniform random
   integer, whatever the number of outcomes or how skewed their weights, so
   the maze can draw thousands of words per page cheaply.
 
@@ -14,6 +14,8 @@ defmodule Limen.Maze.Dice do
       iex> {outcome, _state} = Limen.Maze.Dice.roll(die, :rand.seed_s(:exsss, 42))
       iex> outcome in [:heads, :tails]
       true
+
+  [Vose]: https://doi.org/10.1109/32.92917
   """
 
   @enforce_keys [:size, :total, :outcomes, :thresholds, :aliases]

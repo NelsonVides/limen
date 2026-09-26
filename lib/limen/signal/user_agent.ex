@@ -8,8 +8,11 @@ defmodule Limen.Signal.UserAgent do
   automation tool or a headless browser?
 
   Non-browser markers are found with a single pass of a precompiled
-  Aho-Corasick pattern; the leftmost marker wins, so a crawler that embeds a
-  Chrome token in its user agent is still a crawler.
+  [Aho-Corasick] pattern, which matches many strings at once; the leftmost
+  marker wins, so a crawler that embeds a Chrome token in its user agent is
+  still a crawler.
+
+  [Aho-Corasick]: https://doi.org/10.1145/360825.360855
   """
 
   @pattern_key {__MODULE__, :pattern}

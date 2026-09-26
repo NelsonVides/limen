@@ -26,17 +26,18 @@ defmodule Limen.Config do
       decision is computed, recorded and emitted exactly as in enforce mode,
       but the request always continues. Routes and policies can override it.
 
-    * `:trusted_proxies` - CIDR ranges of the reverse proxies and TLS
+    * `:trusted_proxies` - [CIDR] ranges of the reverse proxies and TLS
       terminators in front of the application. Forwarding headers and the JA4
       header are only read from these peers. Defaults to `[]`.
 
     * `:client_ip_header` - how trusted proxies report the client address:
-      `"x-forwarded-for"`, `"x-real-ip"`, `"forwarded"` (RFC 7239) or `nil`
+      [`"x-forwarded-for"`][X-Forwarded-For], `"x-real-ip"`,
+      [`"forwarded"`][Forwarded] (RFC 7239) or `nil`
       (default) to always use the peer address. Forwarding chains are walked
       from the right, skipping trusted proxies, so clients cannot spoof their
       address by sending the header themselves.
 
-    * `:ja4_header` - request header the TLS terminator stores the JA4
+    * `:ja4_header` - request header the TLS terminator stores the [JA4]
       fingerprint in. Defaults to `"x-ja4"`.
 
     * `:ipv4_prefix` - prefix length IPv4 clients are aggregated to. Defaults
@@ -55,7 +56,7 @@ defmodule Limen.Config do
       * `:level` - `Logger` level. Defaults to `:info`.
 
     * `:asn` - IP to ASN data, see `Limen.Signal.Asn`:
-      * `:file` - an iptoasn.com `ip2asn-combined.tsv` file (optionally
+      * `:file` - an [iptoasn.com][iptoasn] `ip2asn-combined.tsv` file (optionally
         gzipped) loaded at startup. Defaults to `nil`.
       * `:hosting` - additional ASNs classified as hosting providers, on top
         of the built-in list.
@@ -97,7 +98,7 @@ defmodule Limen.Config do
 
     * `:cluster` - ban propagation across nodes, see `Limen.Cluster`:
       * `:enabled` - `false` (default) or `true`. Read at startup.
-      * `:scope` - the `:pg` scope the instance starts and uses, which must
+      * `:scope` - the [`:pg`][pg] scope the instance starts and uses, which must
         be unique among the instances of a node. Defaults to one named after
         the instance, so instances of the same name on different nodes share
         their bans.
@@ -158,6 +159,13 @@ defmodule Limen.Config do
         client prefixes. Defaults to `12` (4 KiB, 1.6% error).
 
       Sketch dimensions are read once at startup.
+
+  [CIDR]: https://www.rfc-editor.org/rfc/rfc4632
+  [X-Forwarded-For]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For
+  [Forwarded]: https://www.rfc-editor.org/rfc/rfc7239
+  [JA4]: https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4.md
+  [iptoasn]: https://iptoasn.com/
+  [pg]: https://www.erlang.org/doc/apps/kernel/pg.html
   """
 
   use Boundary, type: :strict, deps: [Limen.IP, Logger]

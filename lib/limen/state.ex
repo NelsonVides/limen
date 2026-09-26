@@ -13,13 +13,15 @@ defmodule Limen.State do
 
     * Time windows (`Limen.State.Window`): for each of `:second`, `:minute`
       and `:hour`, three epoch slots of exact counters plus a Count-Min Sketch
-      per slot for keys that arrive once the slot is full.
+      (`Limen.Sketch.CountMin`) per slot for keys that arrive once the slot
+      is full.
     * GCRA (`Limen.State.Gcra`): theoretical arrival times for hard limits.
     * Bans (`Limen.State.BanList`): banned prefixes with their expiry, and
       an outbox of local ban changes `Limen.Cluster` broadcasts.
-    * Distinct counting: a HyperLogLog of client prefixes per minute epoch,
-      whose estimate a background tick publishes as `active_prefixes/1`, and
-      a rotating Bloom filter of (prefix, path) pairs so each client's
+    * Distinct counting: a HyperLogLog (`Limen.Sketch.HyperLogLog`) of client
+      prefixes per minute epoch, whose estimate a background tick publishes
+      as `active_prefixes/1`, and a rotating Bloom filter
+      (`Limen.Sketch.RotatingBloom`) of (prefix, path) pairs so each client's
       distinct paths can be counted in its time window.
     * Crawler verification (`Limen.Signal.Fcrdns`): a cache of results and a
       bounded queue of addresses to verify.

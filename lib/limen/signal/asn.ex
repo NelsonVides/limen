@@ -2,6 +2,10 @@ defmodule Limen.Signal.Asn do
   @moduledoc """
   Maps the client address to its autonomous system (ASN).
 
+  An [autonomous system][ASN] is a network run by one operator, such as a
+  cloud provider, a hosting company or an ISP, and identified on the internet
+  by its number.
+
   Traffic from hosting providers and clouds is far more likely to be
   automated than traffic from residential and mobile networks. This signal
   looks the client address up in an IP-to-ASN table and classifies the ASN.
@@ -9,8 +13,8 @@ defmodule Limen.Signal.Asn do
   The table lives in an ETS `ordered_set` keyed by range start, so a lookup
   is one `:ets.prev/2` and one `:ets.lookup/2`. It is loaded off the request
   path by `Limen.Signal.Asn.Loader` from the `:file` option of the `:asn`
-  configuration, in the format of the iptoasn.com `ip2asn-combined.tsv`
-  dataset (optionally gzipped):
+  configuration, in the format of the [iptoasn.com][iptoasn]
+  `ip2asn-combined.tsv` dataset (optionally gzipped):
 
       range_start<TAB>range_end<TAB>asn<TAB>country<TAB>description
 
@@ -26,6 +30,9 @@ defmodule Limen.Signal.Asn do
   verified crawlers before scoring hosting providers.
 
   Provides `:asn`, `:asn_kind`, `:asn_country` and `:asn_name`.
+
+  [ASN]: https://www.rfc-editor.org/rfc/rfc1930
+  [iptoasn]: https://iptoasn.com/
   """
 
   @behaviour Limen.Signal

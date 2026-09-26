@@ -8,17 +8,21 @@ defmodule Limen.Cluster do
 
       config :my_app, Limen, cluster: [enabled: true]
 
-  the instance runs this process in a dedicated `:pg` scope, named after the
-  instance unless `:scope` says otherwise, so instances of the same name on
+  the instance runs this process in a dedicated [`:pg`][pg] scope (Erlang's
+  distributed process groups), named after the instance unless `:scope` says
+  otherwise, so instances of the same name on
   different nodes share their bans and other instances never see them. Bans
   and unbans made on a node (by policies or with `Limen.ban/4`) are queued in
   an ETS outbox on the request path, and this process broadcasts the queue to
   the other nodes every `:interval` milliseconds. Received bans keep their
-  absolute expiry, so node clocks should be roughly in sync (NTP). Counters
+  absolute expiry, so node clocks should be roughly in sync ([NTP]). Counters
   stay local.
 
   Nothing on the request path talks to this process; it only reads and
   writes ETS.
+
+  [pg]: https://www.erlang.org/doc/apps/kernel/pg.html
+  [NTP]: https://www.rfc-editor.org/rfc/rfc5905
   """
 
   use GenServer

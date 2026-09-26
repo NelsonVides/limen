@@ -1,20 +1,28 @@
 defmodule Limen.Signal.JA4 do
   @moduledoc """
-  Reads the JA4 TLS client fingerprint set by the TLS terminator.
+  Reads the [JA4] TLS client fingerprint set by the TLS terminator.
 
-  JA4 is computed from the TLS ClientHello, which the application never sees,
-  so a terminator in front of it (for example nginx built against an OpenSSL
-  that exposes the ClientHello) must compute it and forward it in the
-  `:ja4_header` (default `x-ja4`). The header is only read when the peer is a
-  configured trusted proxy; from anyone else it is ignored, because a client
-  could otherwise claim any fingerprint.
+  JA4 hashes what a client offers in the TLS [ClientHello], the first message
+  of the handshake: its TLS version, cipher suites, extensions and ALPN
+  protocols. It identifies the client's TLS library, whatever user agent it
+  claims. The application never sees the ClientHello, so a terminator in
+  front of it (for example nginx with FoxIO's [ja4-nginx-module]) must
+  compute the fingerprint and forward it in the `:ja4_header` (default
+  `x-ja4`). The header is only read when the peer is a configured trusted
+  proxy; from anyone else it is ignored, because a client could otherwise
+  claim any fingerprint.
 
   Only well-formed JA4 fingerprints (`t13d1516h2_8daaf6152771_02713d6af862`)
-  are accepted. JA4 is BSD-3-Clause licensed; Limen does not implement other
-  JA4+ methods.
+  are accepted. JA4 is [BSD-3-Clause][JA4 license] licensed; Limen does not
+  implement other JA4+ methods.
 
   Provides `:ja4`. When a header is present but not used, the evidence is
   `:untrusted_peer` or `:malformed`.
+
+  [JA4]: https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4.md
+  [ClientHello]: https://www.rfc-editor.org/rfc/rfc8446#section-4.1.2
+  [ja4-nginx-module]: https://github.com/FoxIO-LLC/ja4-nginx-module
+  [JA4 license]: https://github.com/FoxIO-LLC/ja4/blob/main/LICENSE-JA4
   """
 
   @behaviour Limen.Signal

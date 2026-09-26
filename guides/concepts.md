@@ -55,7 +55,7 @@ Signals only observe: they never decide or block anything.
 | Rule | One named line of a policy: `allow`, `deny`, `maze`, `score` or `limit`, with its condition in `when:`. |
 | Score | The sum of the weights of the matching `score` rules, so that many weak facts add up to one number. |
 | `decide` | The block that turns the score into an action, such as `score >= 150 -> :deny`. |
-| Limit | A hard cap per client, such as 100 requests a second, enforced with GCRA (`Limen.State.Gcra`). Limits are checked before any rule; exceeding one throttles. |
+| Limit | A hard cap per client, such as 100 requests a second, enforced with [GCRA] (`Limen.State.Gcra`). Limits are checked before any rule; exceeding one throttles. |
 | Rate | A soft count over a sliding window, such as `rate(:prefix, per: :minute)`, usually feeding a `score` rule (`Limen.State.Window`). |
 | List | A named set, such as allowed addresses or bad JA4 fingerprints, tested with `value in list(name)` (`Limen.Lists`). |
 | Route | A path prefix mapped to a policy, or to `:off` or `:track`, in the options of `Limen.Plug`, so `/login` can use a stricter policy than the rest of the site. |
@@ -155,3 +155,5 @@ collected, and a hard rule decides (`:rule`) or the score does (`:decide`).
 Behaviour and rates are counted before any of these, so they include every
 request. Last, the decision is recorded and emitted, and its action is
 carried out in enforce mode.
+
+[GCRA]: https://www.itu.int/rec/T-REC-I.371

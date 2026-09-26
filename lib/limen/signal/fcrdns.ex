@@ -1,12 +1,14 @@
 defmodule Limen.Signal.Fcrdns do
   @moduledoc """
   Verifies that a request claiming to come from a search engine crawler
-  really does, with forward-confirmed reverse DNS (FCrDNS).
+  really does, with forward-confirmed reverse DNS (FCrDNS): the check search
+  engines document themselves, as [Google does for Googlebot][FCrDNS].
 
-  A crawler's address must point back (PTR) to a host under the crawler's
-  published domains (for Googlebot, `googlebot.com` or `google.com`), and
-  that host must resolve back to the same address. Anyone can put
-  `Googlebot` in a user agent; only Google controls those DNS records.
+  A crawler's address must point back, through its reverse DNS ([PTR])
+  record, to a host under the crawler's published domains (for Googlebot,
+  `googlebot.com` or `google.com`), and that host must resolve back to the
+  same address. Anyone can put `Googlebot` in a user agent; only Google
+  controls those DNS records.
 
   DNS is far too slow for the request path, so this signal only ever reads a
   cache. The first request from an unverified crawler address puts it on a
@@ -25,6 +27,9 @@ defmodule Limen.Signal.Fcrdns do
   The evidence names the claimed crawler and, once resolved, the host or the
   reason verification failed. Crawlers and their suffixes are configured with
   the `:fcrdns` option, see `Limen.Config`.
+
+  [FCrDNS]: https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot
+  [PTR]: https://www.rfc-editor.org/rfc/rfc1035#section-3.3.12
   """
 
   @behaviour Limen.Signal

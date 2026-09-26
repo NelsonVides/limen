@@ -1,6 +1,6 @@
 defmodule Limen.Sketch.CountMin do
   @moduledoc """
-  A lock-free Count-Min Sketch on `:atomics`.
+  A lock-free [Count-Min Sketch] on `:atomics`.
 
   Estimates how many times each key was counted using a fixed `depth × width`
   grid of counters, whatever the number of distinct keys. Estimates never
@@ -8,8 +8,11 @@ defmodule Limen.Sketch.CountMin do
   `e / width × N` with probability `1 - e^-depth`.
 
   Row indexes are derived from two `:erlang.phash2/2` hashes with the
-  Kirsch–Mitzenmacher construction, so an update costs two hashes and `depth`
-  atomic increments regardless of depth.
+  [Kirsch–Mitzenmacher construction][Kirsch-Mitzenmacher], so an update costs
+  two hashes and `depth` atomic increments regardless of depth.
+
+  [Count-Min Sketch]: https://doi.org/10.1016/j.jalgor.2003.12.001
+  [Kirsch-Mitzenmacher]: https://doi.org/10.1002/rsa.20208
   """
 
   import Bitwise

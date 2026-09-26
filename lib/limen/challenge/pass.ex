@@ -3,13 +3,15 @@ defmodule Limen.Challenge.Pass do
   The pass cookie a client gets for solving a challenge.
 
   Like challenge tokens, passes are stateless: an expiry and a truncated
-  HMAC-SHA256 over it and the client identity (see
+  [HMAC]-SHA256 over it and the client identity (see
   `Limen.Challenge.binding/1`), with a key only used for passes.
 
       <<version, expires_at::32, mac::16 bytes>>
 
   Verifying one is the fast path of `Limen.Plug`: parse the cookie header,
   decode 28 characters, compute one HMAC.
+
+  [HMAC]: https://www.rfc-editor.org/rfc/rfc2104
   """
 
   alias Limen.{Challenge, Context}

@@ -2,7 +2,7 @@ defmodule Limen.Maze.Model do
   @moduledoc """
   The language model maze pages are written with.
 
-  A word-level Markov chain learnt from a corpus: for every pair of
+  A word-level [Markov chain] learnt from a corpus: for every pair of
   consecutive words, the words that followed them and how often. Sentences
   are drawn one word at a time from the two words before. Where the corpus
   offers a single continuation, the chain sometimes backs off to the words
@@ -23,6 +23,8 @@ defmodule Limen.Maze.Model do
   treated as a sentence of its own. Write prose that reads like your site:
   product descriptions, articles, help pages. Very short sentences (under
   three words) are skipped.
+
+  [Markov chain]: https://en.wikipedia.org/wiki/Markov_chain
   """
 
   alias Limen.Maze.Dice

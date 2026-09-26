@@ -8,12 +8,12 @@ defmodule Limen.Maze do
   article, a listing of entries or a directory table) written by a language
   model, and every one of its links leads to another maze page. It is sent
   slowly, a few hundred bytes at a time with pauses in between, so a scraper
-  spends its time and its crawl budget on pages worth nothing, without being
+  spends its time and its [crawl budget] on pages worth nothing, without being
   told it was caught.
 
   ## Stable per site, unpredictable elsewhere
 
-  The content of a page is drawn from a random generator seeded with an HMAC
+  The content of a page is drawn from a random generator seeded with an [HMAC]
   of its path, keyed with the instance's secret (see `Limen.Config.Keys`).
   So, on one site, a page is the same every time it is requested, and
   comparing two fetches reveals nothing; but it differs from one site to
@@ -47,7 +47,13 @@ defmodule Limen.Maze do
   Maze links lead under the first trap path of the instance (see
   `Limen.Trap`), so following one is itself a confession; without trap
   paths, they lead below the requested path. Pages carry
-  `noindex, nofollow` in a meta tag and an `x-robots-tag` header.
+  `noindex, nofollow` in a [robots meta tag][robots meta] and an
+  `x-robots-tag` header, which ask search engines neither to index them nor
+  to follow their links.
+
+  [crawl budget]: https://developers.google.com/search/docs/crawling-indexing/large-site-managing-crawl-budget
+  [HMAC]: https://www.rfc-editor.org/rfc/rfc2104
+  [robots meta]: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
   """
 
   use Boundary,

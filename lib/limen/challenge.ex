@@ -1,10 +1,10 @@
 defmodule Limen.Challenge do
   @moduledoc """
-  The proof-of-work challenge, modelled on Anubis.
+  The proof-of-work challenge, modelled on the [Anubis] proxy.
 
   When a policy decides `:challenge`, a browser navigating to the page gets a
   small interstitial instead. A script on it (served by Limen, no third-party
-  assets, compatible with a strict Content-Security-Policy) searches, in Web
+  assets, compatible with a strict [Content-Security-Policy][CSP]) searches, in Web
   Workers, for a nonce such that `SHA-256(token <> nonce)` starts with the
   requested number of zero bits, and posts it back. Each extra bit doubles
   the expected work; the default 16 bits take a fraction of a second on a
@@ -12,7 +12,7 @@ defmodule Limen.Challenge do
 
   Everything is stateless on the server:
 
-    * the challenge token (`Limen.Challenge.Token`) is HMAC-signed and bound
+    * the challenge token (`Limen.Challenge.Token`) is [HMAC]-signed and bound
       to the client's prefix, JA4 fingerprint and user agent, with an expiry,
       the difficulty and a random salt;
     * verification checks the signature, the expiry, the binding and the
@@ -30,7 +30,7 @@ defmodule Limen.Challenge do
   ## Clients without JavaScript
 
   With `no_js: {:meta_refresh, seconds}` (the default), the page includes a
-  `<noscript>` refresh to a wait endpoint that accepts the token once the
+  `<noscript>` [meta refresh] to a wait endpoint that accepts the token once the
   given number of seconds have passed since it was issued. That costs
   automated clients time instead of CPU, and keeps the site usable with
   JavaScript disabled, including for some assistive technologies. With
@@ -43,6 +43,11 @@ defmodule Limen.Challenge do
   Limen serves, under the `:path` of the `:challenge` configuration
   (`/__limen` by default): `solver.js`, `worker.js` and `challenge.css`,
   `POST verify` for solutions and `GET wait` for the no-JavaScript path.
+
+  [Anubis]: https://anubis.techaro.lol/
+  [CSP]: https://www.w3.org/TR/CSP3/
+  [HMAC]: https://www.rfc-editor.org/rfc/rfc2104
+  [meta refresh]: https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-refresh
   """
 
   use Boundary,

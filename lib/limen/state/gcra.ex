@@ -1,12 +1,39 @@
 defmodule Limen.State.Gcra do
   @moduledoc """
-  Lock-free GCRA (generic cell rate algorithm) rate limiting on ETS.
+  Lock-free [GCRA] (generic cell rate algorithm) rate limiting on ETS.
 
-  A limit of `rate` requests per `period` with a `burst` allowance admits a
-  request when the key's theoretical arrival time (TAT) is no further ahead
-  of now than the burst tolerance allows. Over any interval of length `Δ`,
-  at most `Δ / T + burst + 1` requests are admitted, where
-  `T = period / rate` is the emission interval.
+  GCRA was specified for ATM networks, to police the rate of cells on each
+  connection. It is equivalent to a leaky bucket, but needs a single
+  timestamp per key instead of a level and the time it was last updated.
+
+  ## How it works
+
+  A limit of `rate` requests per `period` spaces requests
+  `T = period / rate` apart, the emission interval. Each key stores its
+  theoretical arrival time (TAT): when it would next be due, had it sent at
+  exactly that pace. A request moves the TAT to `max(TAT, now) + T`, and is
+  admitted if that is at most `T * (burst + 1)` ahead of now, the burst
+  tolerance. A client sending faster than the rate pushes its TAT further
+  ahead until it is refused; one that pauses finds its TAT in the past and
+  starts afresh.
+
+  With 10 requests per second (`T` = 100 ms) and `burst: 2` (a tolerance of
+  300 ms):
+
+  | now | new TAT | ahead | result |
+  |---|---|---|---|
+  | 0 | 100 | 100 | admitted |
+  | 0 | 200 | 200 | admitted |
+  | 0 | 300 | 300 | admitted |
+  | 0 | 400 | 400 | refused, retry in 100 ms |
+  | 150 | 400 | 250 | admitted |
+  | 2000 | 2100 | 100 | admitted, as a new key |
+
+  Over any interval of length `Δ`, at most `Δ / T + burst + 1` requests are
+  admitted. For more, see [Wikipedia][wiki], and [Rate limiting, cells, and
+  GCRA][brandur], which compares it with other rate limiting algorithms.
+
+  ## Implementation
 
   Each key stores a single integer, its TAT in microseconds of monotonic time,
   and is updated with one `:ets.update_counter/3` call that applies
@@ -22,6 +49,10 @@ defmodule Limen.State.Gcra do
   Keys whose TAT is in the past carry no information (a fresh key behaves the
   same), so `sweep/1` removes them. New keys are refused once the table holds
   `:gcra_max_keys` entries; they are then not limited.
+
+  [GCRA]: https://www.itu.int/rec/T-REC-I.371
+  [wiki]: https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm
+  [brandur]: https://brandur.org/rate-limiting
   """
 
   alias Limen.Instance

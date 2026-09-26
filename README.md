@@ -9,23 +9,30 @@ No sidecar, no external service: all state lives in ETS, `:atomics` and
 a message.
 
 - **Fingerprints and behaviour**: client prefixes (IPv6 aggregated to /64),
-  JA4 TLS fingerprints from your TLS terminator, HTTP header shape against the
-  claimed user agent, per-client request, 404 and asset patterns, hosting
-  ASNs, and search engine crawlers verified with forward-confirmed reverse
-  DNS.
+  [JA4] TLS fingerprints from your TLS terminator (a hash of what the client's
+  TLS library offers in the handshake), HTTP header shape against the claimed
+  user agent, per-client request, 404 and asset patterns, hosting [ASNs][ASN]
+  (the numbered networks addresses belong to, such as a cloud provider's), and
+  search engine crawlers verified with [forward-confirmed reverse DNS][FCrDNS]
+  (the address's DNS name must belong to the crawler and resolve back to it).
 - **A compiled policy DSL**: rules become plain functions at compile time, and
   every decision records which rules matched and the values they saw.
-- **Proof-of-work challenges** modelled on Anubis: stateless HMAC-signed
-  tokens, a vendored WebCrypto solver, single-use tokens, and a pass cookie
-  checked on a fast path of a few microseconds.
+- **Proof-of-work challenges** modelled on the [Anubis] proxy: the browser
+  searches for a hash with enough leading zero bits, a fraction of a second
+  for a visitor but a cost a scraper pays again for every identity it uses.
+  Stateless [HMAC]-signed tokens (a hash only holders of the secret can
+  compute), a vendored solver on the browser's [Web Crypto API], single-use
+  tokens, and a pass cookie checked on a fast path of a few microseconds.
 - **Honeypots and a maze**: hidden links and form fields catch clients that
   act unlike people, and send them to endless, slow, plausible pages written
-  by a Markov chain, the same for your site on every visit and unpredictable
+  by a [Markov chain] (each word drawn from those that followed the previous
+  two in real text), the same for your site on every visit and unpredictable
   anywhere else.
 - **Dry-run first**: every policy can observe without acting, producing exactly
   the decisions it would enforce.
 - **Built for Phoenix**: per-route policies and instances, a LiveView socket
-  gate, cluster ban propagation over `:pg`, and a LiveDashboard page.
+  gate, cluster ban propagation over [`:pg`][pg] (Erlang's distributed process
+  groups), and a LiveDashboard page.
 
 ## Quick start
 
@@ -128,6 +135,9 @@ Limen.Plug
   └── Act        respond or continue, emit telemetry
 ```
 
+Hard limits use [GCRA], the generic cell rate algorithm: a leaky bucket that
+stores a single timestamp per key.
+
 ## Performance
 
 Median cost per request on an Apple M4 Pro (see [bench/README.md](bench/README.md)):
@@ -166,10 +176,22 @@ check that forbids process messaging outside background processes,
 ## Licensing
 
 Limen is Apache-2.0 licensed. JA4 (the TLS client fingerprint) is
-BSD-3-Clause; other JA4+ methods have been published under a more restrictive
-license, and Limen implements none of them. The HTTP shape signal is an
-independent design.
+[BSD-3-Clause][JA4 license]; other JA4+ methods have been published under the
+more restrictive [FoxIO License], and Limen implements none of them. The HTTP
+shape signal is an independent design.
 
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+[JA4]: https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4.md
+[ASN]: https://www.rfc-editor.org/rfc/rfc1930
+[FCrDNS]: https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot
+[Anubis]: https://anubis.techaro.lol/
+[HMAC]: https://www.rfc-editor.org/rfc/rfc2104
+[Web Crypto API]: https://www.w3.org/TR/WebCryptoAPI/
+[Markov chain]: https://en.wikipedia.org/wiki/Markov_chain
+[pg]: https://www.erlang.org/doc/apps/kernel/pg.html
+[GCRA]: https://www.itu.int/rec/T-REC-I.371
+[JA4 license]: https://github.com/FoxIO-LLC/ja4/blob/main/LICENSE-JA4
+[FoxIO License]: https://github.com/FoxIO-LLC/ja4/blob/main/LICENSE

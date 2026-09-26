@@ -18,7 +18,8 @@ defmodule Limen.Trap do
       config :my_app, Limen, trap: [paths: ["/archive/directory"]]
 
   then make sure only a scraper can get there: disallow the paths in
-  `robots.txt` (`robots/1`), so well-behaved crawlers stay away, and put a
+  [`robots.txt`][robots.txt] (`robots/1`), the file where a site tells
+  crawlers what not to fetch, so well-behaved crawlers stay away, and put a
   link to them that people never see in your layout (`link/2`):
 
       <footer>
@@ -61,6 +62,8 @@ defmodule Limen.Trap do
   to your application, and `check_form/3` returns `{:ok, decision}`.
 
   See the `:trap` options in `Limen.Config`, and the honeypots guide.
+
+  [robots.txt]: https://www.rfc-editor.org/rfc/rfc9309
   """
 
   alias Limen.{Context, Decision, Gate, Instance, Signal}

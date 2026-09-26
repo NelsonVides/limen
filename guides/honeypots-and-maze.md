@@ -5,8 +5,8 @@ catch the clients that give themselves away by acting in ways people never
 do: following links nobody can see, or filling in fields nobody is shown.
 Clients caught that way are sent to the *maze*: endless, plausible pages,
 sent slowly, whose links all lead deeper in. A scraper in the maze spends its
-time and its crawl budget on pages worth nothing, and is never told it was
-caught.
+time and its [crawl budget] (how many pages it fetches from a site) on pages
+worth nothing, and is never told it was caught.
 
 ```
 hidden link or form field ──► trap ──► prefix flagged (ban with action: :maze)
@@ -39,9 +39,9 @@ be under Limen's challenge path (`/__limen`).
 
 ### 2. Keep well-behaved crawlers out
 
-Search engines honour `robots.txt`. Disallow the trap paths so that they
-never go there, whatever links they find. `Limen.Trap.robots/1` returns the
-lines:
+Search engines honour [`robots.txt`][robots.txt], the file where a site tells
+crawlers what not to fetch. Disallow the trap paths so that they never go
+there, whatever links they find. `Limen.Trap.robots/1` returns the lines:
 
 ```elixir
 # router.ex
@@ -56,10 +56,12 @@ end
 If you serve a static `robots.txt`, add a `Disallow:` line per trap path to it
 instead.
 
-As a second line of defence, crawlers verified with forward-confirmed reverse
-DNS (see `Limen.Signal.Fcrdns`) are never flagged, and neither are requests
-claiming to be a known crawler while their verification is pending. The
-decision still records that they requested a trap.
+As a second line of defence, crawlers verified with
+[forward-confirmed reverse DNS][FCrDNS] (their address's DNS name belongs to
+the crawler and resolves back to it, see `Limen.Signal.Fcrdns`) are never
+flagged, and neither are requests claiming to be a known crawler while their
+verification is pending. The decision still records that they requested a
+trap.
 
 ### 3. Hide a link to the trap
 
@@ -81,7 +83,7 @@ It renders something like:
 
 - The link is off screen, out of the tab order and hidden from assistive
   technologies, so people, including screen reader users, never reach it.
-- `rel="nofollow"` keeps away crawlers that honour it.
+- [`rel="nofollow"`][nofollow] keeps away crawlers that honour it.
 - The URL and its text are drawn from the maze and derived from your secret:
   they look like any other page of your site and stay the same across
   requests and nodes.
@@ -89,8 +91,8 @@ It renders something like:
 Options:
 
 - `class: "sr-only"`: hide the link with a class of your stylesheet instead
-  of an inline `style`, for pages whose Content-Security-Policy forbids inline
-  styles.
+  of an inline `style`, for pages whose [Content-Security-Policy][CSP] (a
+  header restricting what a page may load and run) forbids inline styles.
 - `text: "Carrier directory"`: your own link text.
 - `path: "/old"`: link into another trap path.
 
@@ -135,8 +137,9 @@ the `:ban` stage.
   hidden links on behalf of a person. They are rare; keep `:ban` moderate so
   a mistake heals by itself, and watch the trap hits in the decision log.
 - **Shared addresses.** A ban applies to a whole prefix (see `:ipv4_prefix`
-  and `:ipv6_prefix`). Behind carrier-grade NAT, a scraper caught on an IPv4
-  address sends everyone sharing it to the maze for `:ban` seconds.
+  and `:ipv6_prefix`). Behind [carrier-grade NAT][CGNAT], where an ISP shares
+  one IPv4 address between many customers, a scraper caught on that address
+  sends everyone sharing it to the maze for `:ban` seconds.
   `Limen.unban/2` lifts it.
 
 ## Form traps
@@ -158,7 +161,7 @@ they can. `Limen.Trap.form_fields/2` renders two hidden fields to catch both:
 | The timestamp is missing or forged | `:form_token` | the form was never loaded, or was tampered with |
 
 The timestamp is checked on whichever node receives the submission, so keep
-node clocks in sync (NTP), as cluster bans need anyway.
+node clocks in sync (with [NTP]), as cluster bans need anyway.
 
 Any tell traps the submission, flags the prefix for the maze, and returns
 `{:trapped, decision}`; answer it as if it had worked, so the script learns
@@ -271,19 +274,21 @@ things:
 ### What a maze page is
 
 An article, a listing of entries or a directory table, with a title,
-navigation, dates and related links, written by a Markov chain language
-model. Every link leads under the first trap path, so following one is a
-confession in itself. Pages carry `noindex, nofollow` in a meta tag and an
-`x-robots-tag` header.
+navigation, dates and related links, written by a [Markov chain] language
+model: each word is drawn at random from the words that followed the
+previous two in a corpus. Every link leads under the first trap path, so
+following one is a confession in itself. Pages carry `noindex, nofollow` in
+a [robots meta tag and an `x-robots-tag` header][robots meta], which ask
+search engines neither to index them nor to follow their links.
 
 ### Stable for your site, unpredictable elsewhere
 
-A page's content is drawn from a random generator seeded with an HMAC of its
-path, keyed with your secret. On your site the same URL always gives the same
-page, so a scraper comparing two fetches learns nothing; another site gives
-different pages, and nobody can predict them without the secret. With
-`drift: :daily` or `:weekly`, pages change at that pace, like a site being
-edited. Rotating `:secret_key` changes every page.
+A page's content is drawn from a random generator seeded with an [HMAC] of
+its path, a hash keyed with your secret. On your site the same URL always
+gives the same page, so a scraper comparing two fetches learns nothing;
+another site gives different pages, and nobody can predict them without the
+secret. With `drift: :daily` or `:weekly`, pages change at that pace, like a
+site being edited. Rotating `:secret_key` changes every page.
 
 How a page is delivered is random on every request: where it is cut into
 chunks, how long each pause lasts, how long the response takes.
@@ -367,3 +372,14 @@ config :my_app, Limen,
 
 `Plug.Test` collects chunked responses, so `conn.resp_body` holds the whole
 maze page.
+
+[crawl budget]: https://developers.google.com/search/docs/crawling-indexing/large-site-managing-crawl-budget
+[robots.txt]: https://www.rfc-editor.org/rfc/rfc9309
+[FCrDNS]: https://developers.google.com/search/docs/crawling-indexing/verifying-googlebot
+[nofollow]: https://html.spec.whatwg.org/multipage/links.html#link-type-nofollow
+[CSP]: https://www.w3.org/TR/CSP3/
+[CGNAT]: https://www.rfc-editor.org/rfc/rfc6888
+[NTP]: https://www.rfc-editor.org/rfc/rfc5905
+[Markov chain]: https://en.wikipedia.org/wiki/Markov_chain
+[robots meta]: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
+[HMAC]: https://www.rfc-editor.org/rfc/rfc2104

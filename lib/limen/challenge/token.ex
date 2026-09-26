@@ -3,7 +3,7 @@ defmodule Limen.Challenge.Token do
   Stateless, signed challenge tokens.
 
   A token carries a version, the difficulty, when it was issued and when it
-  expires, and a random salt, followed by a truncated HMAC-SHA256 over those
+  expires, and a random salt, followed by a truncated [HMAC]-SHA256 over those
   fields and the client identity (see `Limen.Challenge.binding/1`). The
   identity is not stored in the token, so a token solved by one client is
   useless to any other.
@@ -11,6 +11,8 @@ defmodule Limen.Challenge.Token do
       <<version, difficulty, issued_at::32, expires_at::32, salt::8 bytes, mac::16 bytes>>
 
   It is sent URL-safe base64 encoded, 46 characters.
+
+  [HMAC]: https://www.rfc-editor.org/rfc/rfc2104
   """
 
   alias Limen.{Challenge, Context}

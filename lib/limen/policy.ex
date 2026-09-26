@@ -43,9 +43,10 @@ defmodule Limen.Policy do
   ## Rules
 
     * `limit name, key: dimension, rate: n, per: window, burst: b` - a hard
-      GCRA limit of `n` requests per window (`:second`, `:minute`, `:hour`
-      or milliseconds) per `dimension`, allowing `b` extra requests at once
-      (default `0`). Exceeding it throttles with `Retry-After`.
+      GCRA limit (see `Limen.State.Gcra`) of `n` requests per window
+      (`:second`, `:minute`, `:hour` or milliseconds) per `dimension`,
+      allowing `b` extra requests at once (default `0`). Exceeding it
+      throttles with `Retry-After`.
     * `allow name, when: condition` - allow and stop.
     * `deny name, when: condition` - deny and stop. With `ban: seconds`, the
       prefix is also banned.

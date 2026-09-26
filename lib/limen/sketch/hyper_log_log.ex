@@ -1,13 +1,13 @@
 defmodule Limen.Sketch.HyperLogLog do
   @moduledoc """
-  A lock-free HyperLogLog on `:atomics`.
+  A lock-free [HyperLogLog] on `:atomics`.
 
   Estimates the number of distinct keys added with a relative standard error
   of about `1.04 / sqrt(2^precision)` (1.6% at the default precision of 12)
   in `2^precision` bytes: registers are 8 bits wide and packed eight to a
   64-bit atomic, updated with compare-and-swap.
 
-  Estimates use Otmar Ertl's improved estimator, which keeps that error
+  Estimates use Otmar Ertl's [improved estimator], which keeps that error
   across the whole range. The original estimator errs about twice as much
   around `2.5 × 2^precision` keys, where it switches to counting empty
   registers.
@@ -15,6 +15,9 @@ defmodule Limen.Sketch.HyperLogLog do
   Adding a key costs one hash and usually one atomic read; estimating scans
   every register, so estimates belong in background processes, not on the
   request path.
+
+  [HyperLogLog]: https://doi.org/10.46298/dmtcs.3545
+  [improved estimator]: https://arxiv.org/abs/1702.01284
   """
 
   import Bitwise

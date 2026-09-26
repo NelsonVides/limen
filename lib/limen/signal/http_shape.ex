@@ -22,12 +22,14 @@ defmodule Limen.Signal.HttpShape do
   | `:client_hint_mobile_mismatch` | `sec-ch-ua-mobile` disagrees with the user agent |
   | `:headless` | the user agent or client hints name a headless browser |
 
-  Browsers only send `sec-fetch-*` and client hints to secure origins, so
-  those checks only apply to HTTPS requests. Behind a TLS terminator, make
-  sure `conn.scheme` reflects the original scheme (for example with
-  `Plug.RewriteOn`) before `Limen.Plug` runs.
+  Browsers only send [`sec-fetch-*`][Fetch Metadata] headers (what a request
+  is for, such as a page or an image) and [client hints][UA Client Hints]
+  (`sec-ch-ua*`, in which Chromium browsers describe themselves) to secure
+  origins, so those checks only apply to HTTPS requests. Behind a TLS
+  terminator, make sure `conn.scheme` reflects the original scheme (for
+  example with `Plug.RewriteOn`) before `Limen.Plug` runs.
 
-  This is an independent design, not JA4H.
+  This is an independent design, not [JA4H] (FoxIO's HTTP fingerprint).
 
   ## Shape
 
@@ -39,6 +41,10 @@ defmodule Limen.Signal.HttpShape do
 
   Provides `:ua_family`, `:ua_version`, `:shape` and `:shape_flags`, with the
   parsed user agent as evidence for `:ua_family`.
+
+  [Fetch Metadata]: https://www.w3.org/TR/fetch-metadata/
+  [UA Client Hints]: https://wicg.github.io/ua-client-hints/
+  [JA4H]: https://github.com/FoxIO-LLC/ja4/blob/main/technical_details/JA4H.md
   """
 
   @behaviour Limen.Signal

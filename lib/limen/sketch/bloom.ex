@@ -1,11 +1,13 @@
 defmodule Limen.Sketch.Bloom do
   @moduledoc """
-  A lock-free Bloom filter on `:atomics`.
+  A lock-free [Bloom filter] on `:atomics`.
 
   Answers "have I seen this key?" with no false negatives and a configurable
   false positive rate, in fixed memory. Bits are set with compare-and-swap,
   so `put/2` can tell whether it was the first to add a key, which makes the
   filter usable as a replay guard.
+
+  [Bloom filter]: https://doi.org/10.1145/362686.362692
   """
 
   import Bitwise

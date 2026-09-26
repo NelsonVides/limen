@@ -4,15 +4,17 @@
 
 Limen keys all state on a client *prefix*: IPv4 addresses aggregated to `/32`
 and IPv6 addresses to `/64` by default. One IPv6 subscriber usually controls
-at least a `/64`, so aggregating less would let a single client look like
+at least a `/64` ([RFC 6177] asks ISPs for significantly more, and many assign
+a `/56` or `/48`), so aggregating less would let a single client look like
 billions.
 
 - `ipv6_prefix: 56` or `48` counts larger allocations as one client. Use it
   when you see floods rotating through a `/56` or `/48`; it also groups more
   unrelated users together.
-- `ipv4_prefix: 24` groups neighbouring IPv4 addresses. Carrier-grade NAT
-  already puts many users behind one IPv4 address; aggregating further makes
-  that worse, so only do it against floods from hosting ranges.
+- `ipv4_prefix: 24` groups neighbouring IPv4 addresses.
+  [Carrier-grade NAT][CGNAT], where an ISP shares one address between many
+  customers, already puts many users behind one IPv4 address; aggregating
+  further makes that worse, so only do it against floods from hosting ranges.
 
 ## Memory
 
@@ -25,9 +27,11 @@ configuration:
 | GCRA limits | `gcra_max_keys: 100_000` | about 160 bytes |
 | bans | `max_bans: 100_000` | about 146 bytes |
 
-plus about 4.5 MB allocated when the instance starts: a Count-Min Sketch per window slot
-(`sketch_width × sketch_depth × 8` bytes), the rotating path filter
-(`path_filter_capacity`) and the prefix HyperLogLogs (`hll_precision`).
+plus about 4.5 MB allocated when the instance starts: a [Count-Min Sketch]
+(fixed-size counters that may overcount but never undercount) per window
+slot (`sketch_width × sketch_depth × 8` bytes), the rotating [Bloom filter]
+of client paths (`path_filter_capacity`) and the prefix
+[HyperLogLogs][HyperLogLog] (distinct counters, `hll_precision`).
 
 The worst case at the defaults is around 120 MB per instance, reached only if
 every table fills at once. Instances that serve little traffic can use much
@@ -48,18 +52,20 @@ the dashboard; if it keeps rising outside attacks, raise the caps.
 the last second, minute or hour, counted for every request the policy sees,
 including clients holding a pass. It is cheap and approximate.
 
-`limit` rules are hard GCRA limits, checked before anything else, even for
-clients holding a pass. `rate: 50, per: :second, burst: 100` admits a steady
-50 requests per second and bursts of up to 101 at once. Over any interval of
-length `Δ`, at most `Δ × rate / period + burst + 1` requests get through.
+`limit` rules are hard [GCRA] limits (the generic cell rate algorithm, a
+leaky bucket that stores one timestamp per key), checked before anything
+else, even for clients holding a pass. `rate: 50, per: :second, burst: 100`
+admits a steady 50 requests per second and bursts of up to 101 at once. Over
+any interval of length `Δ`, at most `Δ × rate / period + burst + 1` requests
+get through. `Limen.State.Gcra` explains how it works, with an example.
 
 Limits and rates are per node. Behind a load balancer spreading each client
 over `n` nodes, a client gets up to `n` times the limit.
 
 ## Challenge difficulty
 
-Difficulty is the number of leading zero bits the SHA-256 of the token and
-nonce must have. The expected work doubles with every bit. Times below are
+Difficulty is the number of leading zero bits the [SHA-256] hash of the token
+and nonce must have. The expected work doubles with every bit. Times below are
 the vendored worker measured under Node.js on an Apple M4 Pro with a single
 worker; browsers split the search over up to eight workers, while phones are
 several times slower per core, so treat them as an order of magnitude:
@@ -139,3 +145,11 @@ Lower `non_allow_sample_rate` if the log gets too loud.
 [bench/README.md](https://github.com/NelsonVides/limen/blob/main/bench/README.md).
 In production, `[:limen, :decision]` events carry the evaluation time in
 native time units as `duration`.
+
+[RFC 6177]: https://www.rfc-editor.org/rfc/rfc6177
+[CGNAT]: https://www.rfc-editor.org/rfc/rfc6888
+[Count-Min Sketch]: https://doi.org/10.1016/j.jalgor.2003.12.001
+[Bloom filter]: https://doi.org/10.1145/362686.362692
+[HyperLogLog]: https://doi.org/10.46298/dmtcs.3545
+[GCRA]: https://www.itu.int/rec/T-REC-I.371
+[SHA-256]: https://csrc.nist.gov/pubs/fips/180-4/upd1/final
