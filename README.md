@@ -152,6 +152,13 @@ same runner, and fail the build on a regression over 10%. State is bounded:
 a flood of a million unique IPv6 /64 prefixes leaves memory where it was
 after a hundred thousand.
 
+## Try it
+
+`elixir examples/demo.exs` starts a small Phoenix site with Limen in front of
+it: a LiveView form, a lab that triggers every kind of decision and shows
+Limen's telemetry as it happens, and LiveDashboard with Limen's page and
+charts. It starts in enforce mode; `LIMEN_MODE=dry_run` starts it in dry-run.
+
 ## Guides
 
 - [Getting started](guides/getting-started.md)
