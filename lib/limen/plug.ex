@@ -151,7 +151,7 @@ defmodule Limen.Plug do
       :error ->
         case trap(instance.config.trap.routes, path_info) do
           nil ->
-            {_segments, path, target} = Enum.find(routes, &prefix?(elem(&1, 0), path_info))
+            {_segments, path, target} = find_route(routes, path_info)
             gate(conn, path, target, instance)
 
           trap ->
@@ -160,12 +160,17 @@ defmodule Limen.Plug do
     end
   end
 
+  # The catch-all route comes last and matches every path.
+  defp find_route([{segments, _path, _target} = route | routes], path_info) do
+    if prefix?(segments, path_info), do: route, else: find_route(routes, path_info)
+  end
+
   defp prefix?(segments, path_info), do: strip_prefix(segments, path_info) != :error
 
   defp trap([], _path_info), do: nil
 
-  defp trap(routes, path_info) do
-    Enum.find_value(routes, fn {segments, path} -> prefix?(segments, path_info) && path end)
+  defp trap([{segments, path} | routes], path_info) do
+    if prefix?(segments, path_info), do: path, else: trap(routes, path_info)
   end
 
   defp strip_prefix([], rest), do: {:ok, rest}
