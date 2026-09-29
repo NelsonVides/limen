@@ -54,9 +54,13 @@ defmodule Limen.Telemetry do
         or `:error`) and `:reason` (why it was postponed or failed, else
         `nil`).
 
-    * `[:limen, :fcrdns, :resolved]` - a crawler verification finished.
+    * `[:limen, :fcrdns, :resolved]` - a crawler verification finished, see
+      `Limen.Signal.Fcrdns`.
       * Measurements: `:duration` (native time units).
-      * Metadata: `:ip`, `:result`, `:host`.
+      * Metadata: `:ip`, `:crawler` (the name it claimed), `:result`
+        (`:verified`, `:failed` or `:error` for a transient DNS error),
+        `:host` (the verified host, else `nil`) and `:reason` (why it failed,
+        else `nil`).
   """
 
   use Boundary, type: :strict, deps: []

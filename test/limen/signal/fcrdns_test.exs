@@ -55,6 +55,43 @@ defmodule Limen.Signal.FcrdnsTest do
     assert pending(limen) == 0
   end
 
+  test "reports every verification as telemetry", %{limen: limen} do
+    capture_events([[:limen, :fcrdns, :resolved]], limen)
+    for ip <- [@real, @spoofer, {203, 0, 113, 12}], do: signal(limen, ip)
+    Resolver.run(limen)
+
+    events =
+      for _n <- 1..3 do
+        assert_receive {:event, [:limen, :fcrdns, :resolved], %{duration: duration}, metadata}
+        assert is_integer(duration)
+        {metadata.ip, Map.delete(metadata, :ip)}
+      end
+
+    assert Map.new(events) == %{
+             @real => %{
+               instance: limen,
+               crawler: "googlebot",
+               result: :verified,
+               host: "crawl-66-249-66-1.googlebot.com",
+               reason: nil
+             },
+             @spoofer => %{
+               instance: limen,
+               crawler: "googlebot",
+               result: :failed,
+               host: nil,
+               reason: {:unexpected_host, "host.attacker.example"}
+             },
+             {203, 0, 113, 12} => %{
+               instance: limen,
+               crawler: "googlebot",
+               result: :error,
+               host: nil,
+               reason: :transient
+             }
+           }
+  end
+
   test "exposes spoofed crawlers", %{limen: limen} do
     for ip <- [@spoofer, {203, 0, 113, 10}, {203, 0, 113, 11}], do: signal(limen, ip)
     Resolver.run(limen)

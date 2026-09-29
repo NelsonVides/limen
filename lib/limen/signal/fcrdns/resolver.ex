@@ -76,15 +76,15 @@ defmodule Limen.Signal.Fcrdns.Resolver do
       name,
       [:fcrdns, :resolved],
       %{duration: System.monotonic_time() - started},
-      %{
-        ip: ip,
-        crawler: crawler,
-        result: result
-      }
+      Map.merge(%{ip: ip, crawler: crawler}, outcome(result))
     )
 
     {key, result}
   end
+
+  defp outcome({:verified, host}), do: %{result: :verified, host: host, reason: nil}
+  defp outcome({:failed, reason}), do: %{result: :failed, host: nil, reason: reason}
+  defp outcome({:error, reason}), do: %{result: :error, host: nil, reason: reason}
 
   defp cache(table, {:ok, {key, result}}, config) do
     now = System.system_time(:millisecond)
