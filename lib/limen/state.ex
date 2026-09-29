@@ -155,15 +155,22 @@ defmodule Limen.State do
     do: :atomics.get(estimate, 1)
 
   @doc """
-  Adds a client prefix to the active prefix count, and returns whether it had
-  not requested `path` recently.
+  Adds a client prefix to the active prefix count.
+
+  Adding a prefix again in the same minute changes nothing, so callers only
+  need to on its first request of the minute.
   """
-  @spec observe_client(Instance.t(), Limen.IP.prefix(), String.t(), integer()) :: boolean()
-  def observe_client(%Instance{state: %{distinct: distinct}}, prefix, path, now) do
-    %{prefixes: prefixes, paths: paths} = distinct
+  @spec observe_prefix(Instance.t(), Limen.IP.prefix(), integer()) :: :ok
+  def observe_prefix(%Instance{state: %{distinct: %{prefixes: prefixes}}}, prefix, now) do
     HyperLogLog.add(elem(prefixes, rem(div(now, duration(:minute)), @slots)), prefix)
-    RotatingBloom.put_new(paths, {prefix, path})
   end
+
+  @doc """
+  Whether a client prefix had not requested `path` recently.
+  """
+  @spec new_path?(Instance.t(), Limen.IP.prefix(), String.t()) :: boolean()
+  def new_path?(%Instance{state: %{distinct: %{paths: paths}}}, prefix, path),
+    do: RotatingBloom.put_new(paths, {prefix, path})
 
   @doc false
   @spec estimate_active_prefixes(Instance.t(), integer()) :: non_neg_integer()

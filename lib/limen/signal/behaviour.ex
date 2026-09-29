@@ -14,8 +14,9 @@ defmodule Limen.Signal.Behaviour do
 
   The counts share one row per prefix (see `key/1`), so counting a request
   costs one table update, and reading the counts back costs nothing. It also
-  counts requests per JA4 fingerprint, for dashboards, and adds the prefix to
-  the HyperLogLog behind `Limen.State.active_prefixes/1`.
+  counts requests per JA4 fingerprint, for dashboards, and on a prefix's
+  first request of each minute adds it to the HyperLogLog behind
+  `Limen.State.active_prefixes/1`.
 
   `collect/1` turns the counts into signals. Scrapers tend to fetch many
   pages and few assets, and to probe paths that do not exist; browsers load
@@ -58,8 +59,11 @@ defmodule Limen.Signal.Behaviour do
   """
   @spec track(Plug.Conn.t(), Context.t()) :: {Plug.Conn.t(), Context.t()}
   def track(conn, %Context{instance: instance, prefix: prefix, now: now} = ctx) do
-    new_path = State.observe_client(instance, prefix, ctx.path, now)
-    counts = Window.add(instance, :minute, key(prefix), increments(kind(ctx), new_path), now)
+    increments = increments(kind(ctx), State.new_path?(instance, prefix, ctx.path))
+    {counts, first?} = Window.add_first(instance, :minute, key(prefix), increments, now)
+    # The active prefix count uses the same minutes, so a prefix only needs
+    # adding on its first request of one.
+    if first?, do: State.observe_prefix(instance, prefix, now)
     count_ja4(instance, ctx.ja4, now)
 
     conn =

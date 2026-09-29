@@ -66,6 +66,27 @@ defmodule Limen.State.WindowTest do
     assert :ets.info(State.table(instance, :minute, 0), :size) == 1
   end
 
+  test "add_first tells when a row's first count turns positive in an epoch", %{
+    instance: instance
+  } do
+    assert {{1, 0}, true} = Window.add_first(instance, :minute, :row, {1, 0}, @t0)
+    assert {{2, 1}, false} = Window.add_first(instance, :minute, :row, {1, 1}, @t0 + 1)
+    assert {_counts, true} = Window.add_first(instance, :minute, :row, {1, 0}, @t0 + 60_000)
+
+    # A row opened by another count is not a first until its first count is.
+    assert {{0, 1}, false} = Window.add_first(instance, :minute, :other, {0, 1}, @t0)
+    assert {{1, 1}, true} = Window.add_first(instance, :minute, :other, {1, 0}, @t0)
+  end
+
+  @tag config: [state: [max_keys: 1]]
+  test "add_first reports rows counted in the sketch as first", %{instance: instance} do
+    Window.add(instance, :minute, :row, {1}, @t0)
+
+    for _event <- 1..3 do
+      assert {_counts, true} = Window.add_first(instance, :minute, :sketched, {1}, @t0)
+    end
+  end
+
   test "each count of a row slides on its own", %{instance: instance} do
     Window.add(instance, :second, :row, {100, 0, 40}, @t0 + 500)
     Window.add(instance, :second, :row, {1, 1, 0}, @t0 + 1_250)

@@ -7,9 +7,11 @@ defmodule Limen.Signal.BehaviourTest do
   # The start of a minute centuries ahead, so the rotator never clears it.
   @now 3_600_000 * 5_000_000
 
-  defp track(instance, path, headers \\ []) do
+  defp track(instance, path, headers \\ [], ip \\ {127, 0, 0, 1}) do
     conn =
       Enum.reduce(headers, conn(:get, path), fn {k, v}, conn -> put_req_header(conn, k, v) end)
+
+    conn = %{conn | remote_ip: ip}
 
     ctx = Signal.identify(Context.from_conn(conn, instance), instance.config)
     Behaviour.track(conn, %{ctx | now: @now})
@@ -47,5 +49,13 @@ defmodule Limen.Signal.BehaviourTest do
     key = {Behaviour.key({4, 0x7F000001, 32}), div(@now, 60_000)}
 
     assert [{^key, 2, 1, 1, 1, 2}] = :ets.lookup(table, key)
+  end
+
+  test "counts each active prefix once, however many requests it makes", %{instance: instance} do
+    for ip <- [{192, 0, 2, 1}, {198, 51, 100, 1}, {203, 0, 113, 1}], path <- ["/a", "/b", "/c"] do
+      track(instance, path, [], ip)
+    end
+
+    assert State.estimate_active_prefixes(instance, @now) == 3
   end
 end

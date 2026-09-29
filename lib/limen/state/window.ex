@@ -67,12 +67,28 @@ defmodule Limen.State.Window do
   """
   @spec add(Instance.t(), window(), term(), tuple(), integer()) :: tuple()
   def add(%Instance{} = instance, window, key, increments, now) do
+    {counts, _first?} = add_first(instance, window, key, increments, now)
+    counts
+  end
+
+  @doc """
+  Like `add/5`, and also returns whether this update made the row's first
+  count positive in the current epoch. For a row whose first count is
+  requests, that is whether this is the key's first request of the epoch.
+
+  A row counted in the sketch, once the slot is full, always reports `true`:
+  the sketch cannot tell.
+  """
+  @spec add_first(Instance.t(), window(), term(), tuple(), integer()) :: {tuple(), boolean()}
+  def add_first(%Instance{} = instance, window, key, increments, now) do
     duration = State.duration(window)
     epoch = div(now, duration)
     slots = slots(instance, window)
-    current = add_row(instance, slots, key, increments, epoch)
+    {current, exact?} = add_row(instance, slots, key, increments, epoch)
     previous = read_row(slots, key, tuple_size(increments), epoch - 1, nil)
-    slide(current, previous, now, duration)
+    first = elem(increments, 0)
+    first? = first > 0 and (not exact? or hd(current) == first)
+    {slide(current, previous, now, duration), first?}
   end
 
   @doc """
@@ -177,6 +193,7 @@ defmodule Limen.State.Window do
     ArgumentError -> CountMin.add(sketch, entry)
   end
 
+  # Returns the row's counts in the epoch, and whether they are exact.
   defp add_row(instance, %{max_keys: max_keys} = slots, key, increments, epoch) do
     slot = rem(epoch, State.slots())
     table = elem(slots.tables, slot)
@@ -192,7 +209,7 @@ defmodule Limen.State.Window do
       # A row that existed already held a positive count, so only a new row
       # comes back equal to the increments.
       if counts == Tuple.to_list(increments), do: :atomics.add(slots.counts, slot + 1, 1)
-      counts
+      {counts, true}
     else
       increments = Tuple.to_list(increments)
       add_saturated(instance, table, entry, ops, increments, elem(slots.sketches, slot))
@@ -201,15 +218,15 @@ defmodule Limen.State.Window do
 
   defp add_saturated(instance, table, entry, ops, increments, sketch) do
     if :ets.member(table, entry) do
-      :ets.update_counter(table, entry, ops)
+      {:ets.update_counter(table, entry, ops), true}
     else
       Limen.Stats.incr(instance, :saturated)
-      add_sketch(sketch, entry, increments)
+      {add_sketch(sketch, entry, increments), false}
     end
   rescue
     # The entry was cleared between the membership check and the update,
     # which only happens to entries of an expired epoch.
-    ArgumentError -> add_sketch(sketch, entry, increments)
+    ArgumentError -> {add_sketch(sketch, entry, increments), false}
   end
 
   defp add_sketch(sketch, entry, increments) do
