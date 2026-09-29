@@ -11,7 +11,7 @@ defmodule Limen.IP do
   are cheap to hash, compare and use as ETS keys.
   """
 
-  use Boundary, type: :strict, deps: []
+  use Limen.Boundary, type: :strict, deps: []
 
   import Bitwise
 

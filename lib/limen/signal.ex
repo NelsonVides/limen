@@ -45,7 +45,7 @@ defmodule Limen.Signal do
   messages, and should cost at most a few microseconds.
   """
 
-  use Boundary,
+  use Limen.Boundary,
     type: :strict,
     deps: [
       Limen.Config,

@@ -30,7 +30,7 @@ defmodule Limen.Decision do
   (a WebSocket or LiveView connection check).
   """
 
-  use Boundary, type: :strict, deps: [Limen.IP], exports: [Match]
+  use Limen.Boundary, type: :strict, deps: [Limen.IP], exports: [Match]
 
   alias Limen.Decision.Match
 

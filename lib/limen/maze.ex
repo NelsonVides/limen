@@ -56,7 +56,7 @@ defmodule Limen.Maze do
   [robots meta]: https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
   """
 
-  use Boundary,
+  use Limen.Boundary,
     type: :strict,
     deps: [Limen.Context, Limen.HMAC, Limen.Instance, Limen.Stats, Limen.Telemetry, Plug],
     exports: [Bundled, Dice, Model]

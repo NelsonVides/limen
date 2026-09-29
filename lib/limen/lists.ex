@@ -28,7 +28,7 @@ defmodule Limen.Lists do
   not an error: it has no members.
   """
 
-  use Boundary, type: :strict, deps: [Limen.Instance, Limen.IP]
+  use Limen.Boundary, type: :strict, deps: [Limen.Instance, Limen.IP]
 
   alias Limen.{Instance, IP}
 

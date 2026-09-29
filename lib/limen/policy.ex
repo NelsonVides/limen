@@ -98,7 +98,7 @@ defmodule Limen.Policy do
   renders the policy itself.
   """
 
-  use Boundary,
+  use Limen.Boundary,
     type: :strict,
     deps: [Limen.Context, Limen.Decision, Limen.IP, Limen.Lists, Limen.Signal, Limen.State],
     exports: [Default, Runtime]

@@ -23,7 +23,7 @@ defmodule Limen.Context do
   values that produced it.
   """
 
-  use Boundary, type: :strict, deps: [Limen.Instance, Limen.IP, Plug]
+  use Limen.Boundary, type: :strict, deps: [Limen.Instance, Limen.IP, Plug]
 
   @type prefix :: Limen.IP.prefix()
 

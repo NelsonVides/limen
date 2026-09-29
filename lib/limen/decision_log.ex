@@ -16,7 +16,7 @@ defmodule Limen.DecisionLog do
   Sampling is configured with the `:decision_log` option, see `Limen.Config`.
   """
 
-  use Boundary,
+  use Limen.Boundary,
     type: :strict,
     deps: [Limen.Config, Limen.Decision, Limen.Instance, Limen.IP, Logger],
     exports: [Flusher]

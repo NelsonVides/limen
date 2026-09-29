@@ -45,7 +45,7 @@ defmodule Limen do
 
   # Limen.Dashboard and Limen.LiveView only exist when the application has
   # their optional dependencies.
-  use Boundary,
+  use Limen.Boundary,
     deps: [EEx, Logger, Plug, Plug.Crypto],
     exports:
       [

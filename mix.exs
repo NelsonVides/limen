@@ -9,7 +9,7 @@ defmodule Limen.MixProject do
       version: version(),
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [:boundary | Mix.compilers()],
+      compilers: compilers(Mix.env()),
       boundary: [default: [check: [apps: [:plug, {:mix, :runtime}]]]],
       start_permanent: Mix.env() == :prod,
       deps: deps(),
@@ -33,13 +33,19 @@ defmodule Limen.MixProject do
     [preferred_envs: [bench: :bench]]
   end
 
+  # The boundary compiler checks Limen's layers in its own builds (see
+  # Limen.Boundary). Dependencies compile in :prod, so applications using
+  # Limen need neither the compiler nor the `boundary` package.
+  defp compilers(:prod), do: Mix.compilers()
+  defp compilers(_env), do: [:boundary | Mix.compilers()]
+
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_env), do: ["lib"]
 
   defp deps do
     [
       {:plug, "~> 1.16"},
-      {:boundary, "~> 0.11", runtime: false},
+      {:boundary, "~> 0.11", only: [:dev, :test, :bench], runtime: false},
       {:phoenix_live_view, "~> 1.0", optional: true},
       {:phoenix_live_dashboard, "~> 0.8", optional: true},
       {:telemetry, "~> 1.2"},

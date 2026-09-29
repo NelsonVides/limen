@@ -13,7 +13,7 @@ defmodule Limen.Instance do
   action, not something to do per request.
   """
 
-  use Boundary, type: :strict, deps: [Limen.Config]
+  use Limen.Boundary, type: :strict, deps: [Limen.Config]
 
   @enforce_keys [:name, :config]
   defstruct [

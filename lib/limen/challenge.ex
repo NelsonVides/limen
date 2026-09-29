@@ -50,7 +50,7 @@ defmodule Limen.Challenge do
   [meta refresh]: https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-http-equiv-refresh
   """
 
-  use Boundary,
+  use Limen.Boundary,
     type: :strict,
     deps:
       [Limen.Config, Limen.Context, Limen.HMAC, Limen.Instance, Limen.IP, Limen.Sketch] ++

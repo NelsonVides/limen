@@ -63,7 +63,7 @@ defmodule Limen.Telemetry do
         else `nil`).
   """
 
-  use Boundary, type: :strict, deps: []
+  use Limen.Boundary, type: :strict, deps: []
 
   @doc false
   @spec decision(Limen.Decision.t(), Plug.Conn.t() | nil) :: :ok

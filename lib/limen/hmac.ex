@@ -8,7 +8,7 @@ defmodule Limen.HMAC do
   # time of `:crypto.mac/4` for the tokens and passes Limen verifies on the
   # request path.
 
-  use Boundary, type: :strict, deps: []
+  use Limen.Boundary, type: :strict, deps: []
 
   @block 64
   @ipad :binary.copy(<<0x36>>, @block)

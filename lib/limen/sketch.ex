@@ -19,5 +19,8 @@ defmodule Limen.Sketch do
   sketch library, so it has no dependencies beyond Plug and Telemetry.
   """
 
-  use Boundary, type: :strict, deps: [], exports: [Bloom, CountMin, HyperLogLog, RotatingBloom]
+  use Limen.Boundary,
+    type: :strict,
+    deps: [],
+    exports: [Bloom, CountMin, HyperLogLog, RotatingBloom]
 end

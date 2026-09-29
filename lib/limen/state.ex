@@ -41,7 +41,7 @@ defmodule Limen.State do
   Each case increments the `:saturated` counter in `Limen.Stats`.
   """
 
-  use Boundary,
+  use Limen.Boundary,
     type: :strict,
     deps: [Limen.Config, Limen.Instance, Limen.IP, Limen.Sketch, Limen.Stats, Limen.Telemetry],
     exports: [BanList, Gcra, Rotator, Sweeper, Window]
