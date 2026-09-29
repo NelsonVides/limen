@@ -13,3 +13,6 @@ limen-*.tar
 
 # Benchmark output (baselines are produced in CI, not committed)
 /bench/output/
+
+# Written by the release workflow from the tag; see RELEASING.md
+/VERSION

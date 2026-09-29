@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - v*.*.*
+
+permissions:
+  contents: read
+
+jobs:
+  wait-for-ci:
+    name: Wait for CI
+    runs-on: 'ubuntu-26.04'
+    permissions:
+      checks: read
+    steps:
+      - uses: lewagon/wait-on-check-action@v1.7.0
+        with:
+          ref: ${{ github.sha }}
+          running-workflow-name: Wait for CI
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 10
+
+  publish:
+    name: Publish
+    needs: wait-for-ci
+    runs-on: 'ubuntu-26.04'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: '1.20'
+          otp-version: '29'
+      # mix.exs reads the version from here: the Hex package has no git history.
+      - name: Write the version
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
+      # Fails the release before anything is published if the changelog has no
+      # section for this version.
+      - name: Extract the release notes
+        run: |
+          version="$(cat VERSION)"
+          awk -v heading="## $version" '
+            $0 == heading { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+            END { exit !found }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md" || {
+            echo "::error::CHANGELOG.md has no '## $version' section"
+            exit 1
+          }
+      - run: mix deps.get
+      - name: Publish to Hex
+        env:
+          HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
+        run: mix hex.publish --yes
+      - uses: softprops/action-gh-release@v3.0.3
+        with:
+          body_path: ${{ runner.temp }}/notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}

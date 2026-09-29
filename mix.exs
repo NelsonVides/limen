@@ -1,13 +1,12 @@
 defmodule Limen.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
   @source_url "https://github.com/NelsonVides/limen"
 
   def project do
     [
       app: :limen,
-      version: @version,
+      version: version(),
       elixir: "~> 1.18",
       elixirc_paths: elixirc_paths(Mix.env()),
       compilers: [:boundary | Mix.compilers()],
@@ -77,7 +76,8 @@ defmodule Limen.MixProject do
     [
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv/static priv/maze mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files:
+        ~w(lib priv/static priv/maze mix.exs VERSION README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 
@@ -85,7 +85,7 @@ defmodule Limen.MixProject do
     [
       main: "readme",
       source_url: @source_url,
-      source_ref: "v#{@version}",
+      source_ref: "v#{version()}",
       extras: [
         "README.md",
         "guides/getting-started.md",
@@ -176,6 +176,33 @@ defmodule Limen.MixProject do
         Utilities: [Limen.IP]
       ]
     ]
+  end
+
+  # The version comes from the latest `v*` tag. A Hex package has no git
+  # history, and inside a dependent project `git describe` would answer for the
+  # host's repository, so the release workflow writes the tag to VERSION and
+  # ships it in the package.
+  defp version do
+    case File.read(Path.join(__DIR__, "VERSION")) do
+      {:ok, version} -> String.trim(version)
+      {:error, _reason} -> git_version()
+    end
+  end
+
+  defp git_version do
+    with true <- File.exists?(Path.join(__DIR__, ".git")),
+         {described, 0} <-
+           System.cmd("git", ~w[describe --tags --match v*],
+             cd: __DIR__,
+             env: %{"HEX_API_KEY" => nil},
+             stderr_to_stdout: true
+           ),
+         "v" <> version <- String.trim(described),
+         {:ok, _parsed} <- Version.parse(version) do
+      version
+    else
+      _no_tag -> "0.0.0-dev"
+    end
   end
 
   defp dialyzer do
