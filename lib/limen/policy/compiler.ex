@@ -116,7 +116,7 @@ defmodule Limen.Policy.Compiler do
     end
 
     call = quote(do: Runtime.shape_flag?(unquote(ctx), unquote(flag)))
-    {call, observe(info, node)}
+    {call, observe(%{info | signals: MapSet.put(info.signals, :shape_flags)}, node)}
   end
 
   defp expand_node({:rate, _meta, [dimension, opts]} = node, info, ctx, _provided, env) do

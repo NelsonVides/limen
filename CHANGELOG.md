@@ -16,7 +16,8 @@ First release.
   per-prefix behaviour, IP-to-ASN classification and FCrDNS crawler
   verification.
 - `Limen.Policy`: a compiled DSL with `limit`, `allow`, `deny`, `score` and
-  `decide`, compile-time validation and per-rule explanations.
+  `decide`, compile-time validation and per-rule explanations. Only the
+  signals a policy refers to are collected.
 - Proof-of-work challenges with stateless tokens, a vendored solver,
   single-use tokens, pass cookies and a no-JavaScript fallback.
 - IP-to-ASN data packed into a single `:persistent_term` entry, about 10 MB

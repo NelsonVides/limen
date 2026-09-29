@@ -265,6 +265,27 @@ defmodule Limen.PolicyTest do
              Policy.evaluate(Ordering, ctx)
   end
 
+  defmodule Referring do
+    use Limen.Policy
+
+    score :no_client_hints, 10, when: shape_flag(:no_client_hints)
+
+    decide do
+      signal(:asn_kind) == :hosting -> :deny
+      true -> :allow
+    end
+  end
+
+  test "only the signals a policy refers to are collected", %{limen: limen} do
+    assert Policy.describe(Referring) =~
+             "(signals: Limen.Signal.HttpShape, Limen.Signal.Asn)"
+
+    decision = decide(limen, Referring, request([{"user-agent", "curl/8.5.0"}]))
+    assert %{shape_flags: _flags, asn_kind: :unknown} = decision.signals
+    refute Map.has_key?(decision.signals, :fcrdns)
+    refute Map.has_key?(decision.signals, :requests_per_minute)
+  end
+
   test "evaluate/2 works on a bare context" do
     result = Policy.evaluate(Scoring, %Context{headers: [{"accept-language", "en"}]})
     assert %{action: :allow, stage: :decide, score: 0} = result

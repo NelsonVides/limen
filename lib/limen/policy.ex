@@ -83,9 +83,10 @@ defmodule Limen.Policy do
 
   ## Options
 
-    * `:signals` - signal modules to collect. Defaults to
+    * `:signals` - signal modules the policy can use. Defaults to
       `Limen.Signal.defaults/0`. Only the values of these signals (and the
-      client identity) can be referenced.
+      client identity) can be referenced, and only the modules providing a
+      value the policy refers to are collected.
     * `:mode` - `:dry_run` or `:enforce` for routes using this policy, unless
       the route itself sets a mode. Defaults to the global mode.
 
@@ -239,14 +240,7 @@ defmodule Limen.Policy do
   defmacro __before_compile__(env) do
     %{opts: opts, rules: rules, limits: limits, decide: decide} = definitions(env)
     signals = signal_modules(opts, env)
-
-    scope = %{
-      ctx: Macro.var(:ctx, __MODULE__),
-      score: Compiler.score(),
-      provided: MapSet.new(Enum.flat_map(signals, & &1.provides())),
-      env: env
-    }
-
+    scope = scope(signals, env)
     compiled = Enum.map(rules, &compile_rule(&1, scope))
     {decide_ast, clauses} = Compiler.decide(decide, scope.ctx, scope.provided, env)
 
@@ -254,13 +248,8 @@ defmodule Limen.Policy do
       compiled
       |> Enum.map(& &1.meta)
       |> rule_metadata()
-      |> Map.merge(%{
-        limits: limits,
-        rates: rates(compiled, decide, scope),
-        signals: signals,
-        mode: Keyword.get(opts, :mode),
-        clauses: clauses
-      })
+      |> Map.merge(references(compiled, decide, signals, scope))
+      |> Map.merge(%{limits: limits, mode: Keyword.get(opts, :mode), clauses: clauses})
 
     [
       metadata_function(metadata),
@@ -268,6 +257,17 @@ defmodule Limen.Policy do
       Enum.map(compiled, &observe_function(&1, scope.ctx)),
       decide_function(decide_ast, scope)
     ]
+  end
+
+  # What compiling a condition needs: the variables generated functions bind,
+  # the signal values the policy can refer to, and where it is compiled.
+  defp scope(signals, env) do
+    %{
+      ctx: Macro.var(:ctx, __MODULE__),
+      score: Compiler.score(),
+      provided: MapSet.new(Enum.flat_map(signals, & &1.provides())),
+      env: env
+    }
   end
 
   defp definitions(env) do
@@ -289,10 +289,23 @@ defmodule Limen.Policy do
     %{rules: rules, short_circuit: short_circuit, scored: scored}
   end
 
-  defp rates(compiled, decide, scope) do
-    compiled
-    |> Enum.reduce(decide_rates(decide, scope), &MapSet.union(&1.rates, &2))
-    |> Enum.sort()
+  # The rates to track and the signals to collect, from what the rules and the
+  # decide block refer to.
+  defp references(compiled, decide, signals, scope) do
+    %{rates: rates, signals: keys} =
+      Enum.reduce(compiled, decide_references(decide, scope), &merge_references/2)
+
+    %{rates: Enum.sort(rates), signals: collected(signals, keys)}
+  end
+
+  defp merge_references(%{rates: rates, signals: signals}, acc) do
+    %{rates: MapSet.union(acc.rates, rates), signals: MapSet.union(acc.signals, signals)}
+  end
+
+  # A signal that provides none of the values the policy refers to is not
+  # collected: it could not change the decision.
+  defp collected(signals, keys) do
+    Enum.filter(signals, fn signal -> Enum.any?(signal.provides(), &MapSet.member?(keys, &1)) end)
   end
 
   defp metadata_function(metadata) do
@@ -331,7 +344,13 @@ defmodule Limen.Policy do
       opts: Map.new(extra)
     }
 
-    %{meta: meta, expanded: expanded, observed: observed, rates: info.rates}
+    %{
+      meta: meta,
+      expanded: expanded,
+      observed: observed,
+      rates: info.rates,
+      signals: info.signals
+    }
   end
 
   defp rule_function(%{meta: %{name: name}, expanded: expanded}, ctx) do
@@ -364,14 +383,13 @@ defmodule Limen.Policy do
     end
   end
 
-  # Rates referenced from `decide` must be tracked too.
-  defp decide_rates(clauses, scope) do
+  # Rates and signals referenced from `decide` must be tracked and collected
+  # too.
+  defp decide_references(clauses, scope) do
     clauses
     |> Enum.flat_map(fn {:->, _meta, [[condition], result]} -> [condition, result] end)
-    |> Enum.map(fn ast ->
-      elem(Compiler.expand(ast, scope.ctx, scope.provided, scope.env), 1).rates
-    end)
-    |> Enum.reduce(MapSet.new(), &MapSet.union/2)
+    |> Enum.map(&elem(Compiler.expand(&1, scope.ctx, scope.provided, scope.env), 1))
+    |> Enum.reduce(%{rates: MapSet.new(), signals: MapSet.new()}, &merge_references/2)
   end
 
   defp signal_modules(opts, env) do
