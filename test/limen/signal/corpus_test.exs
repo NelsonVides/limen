@@ -120,7 +120,7 @@ defmodule Limen.Signal.CorpusTest do
   defp evaluate(limen, name) do
     %{conn: conn, meta: meta} = Corpus.load(name)
 
-    Limen.Instance.put_config(
+    Limen.update_config(
       limen,
       :client_ip_header,
       meta["client_ip_header"] || "x-forwarded-for"

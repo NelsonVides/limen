@@ -136,7 +136,7 @@ defmodule Limen.Challenge.TokenTest do
 
     test "follow the cookie name when it changes at runtime", %{limen: limen, client: client} do
       {value, _ttl} = Pass.issue(client.([]))
-      Limen.Instance.put_config(limen, :challenge, cookie: "renamed")
+      Limen.update_config(limen, :challenge, cookie: "renamed")
       renamed = client.(instance: instance(limen), cookie_headers: ["renamed=#{value}"])
 
       assert {:ok, _expires_at} = Pass.verify(renamed)
@@ -152,7 +152,7 @@ defmodule Limen.Challenge.TokenTest do
     end
 
     assert_raise ArgumentError, ~r/cannot be changed at runtime/, fn ->
-      Limen.Instance.put_config(limen, :secret_key, @secret)
+      Limen.update_config(limen, :secret_key, @secret)
     end
 
     assert inspect(instance(limen).config.keys) == "#Limen.Config.Keys<redacted>"

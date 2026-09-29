@@ -185,6 +185,24 @@ defmodule Limen.Config do
 
       Sketch dimensions are read once at startup.
 
+  ## Changing options at runtime
+
+  `Limen.update_config/3` changes an option of a running instance. Options
+  given as keyword lists are merged into their current values, as if they
+  had been given together at startup, so changing one leaves the others as
+  they are:
+
+      Limen.update_config(:my_app, :trap, min_fill_time: 1_000)
+
+  Some options are only read when the instance starts, and changing them at
+  runtime raises: `:lists` (use `Limen.Lists` instead), `:secret_key` and
+  `:previous_secret_keys`, and in their groups `:state` `:max_keys`,
+  `:sketch_width`, `:sketch_depth`, `:path_filter_capacity` and
+  `:hll_precision`; `:cluster` `:enabled` and `:scope`; `:decision_log`
+  `:size`; `:challenge` `:replay_capacity`; `:maze` `:corpus` and
+  `:bundled_corpus`; `:asn` `:file`, `:url` and `:refresh`. Restart the
+  instance to change them.
+
   [CIDR]: https://www.rfc-editor.org/rfc/rfc4632
   [X-Forwarded-For]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For
   [Forwarded]: https://www.rfc-editor.org/rfc/rfc7239
@@ -302,6 +320,18 @@ defmodule Limen.Config do
 
   @type t :: %{atom() => term()}
 
+  # Options only read when an instance starts: changing them at runtime would
+  # do nothing, or leave the instance inconsistent.
+  @startup_only %{
+    lists: :all,
+    state: [:max_keys, :sketch_width, :sketch_depth, :path_filter_capacity, :hll_precision],
+    cluster: [:enabled, :scope],
+    decision_log: [:size],
+    challenge: [:replay_capacity],
+    maze: [:corpus, :bundled_corpus],
+    asn: [:file, :url, :refresh]
+  }
+
   @doc """
   The instances configured for `app`, with their options.
 
@@ -334,12 +364,15 @@ defmodule Limen.Config do
     secret = Keyword.get(secrets, :secret_key)
     keys = keys!(secret, Keyword.get(secrets, :previous_secret_keys, []))
 
-    config =
-      Enum.reduce(opts, Map.put(@defaults, :keys, keys), fn {key, value}, acc ->
-        put(acc, key, value)
-      end)
+    base = Map.merge(@defaults, %{keys: keys, options: %{}})
 
-    # Checked again once every option is known, whatever their order.
+    opts
+    |> Enum.reduce(base, fn {key, value}, acc -> put(acc, key, value) end)
+    |> check_traps!()
+  end
+
+  # Checked once every option is known, whatever their order.
+  defp check_traps!(config) do
     case outside_challenge(config.trap.paths, config) do
       :ok -> config
       {:error, message} -> raise ArgumentError, "invalid Limen trap option: #{message}"
@@ -347,8 +380,58 @@ defmodule Limen.Config do
   end
 
   @doc """
-  Validates and sets one option.
+  Validates and changes one option of a built configuration.
+
+  A keyword list is merged into the option's current value, recursively,
+  so `update(config, :trap, min_fill_time: 0)` keeps the trap paths. Any
+  other value replaces the current one. Raises `ArgumentError` on an invalid
+  value, and on a change to an option only read at startup (see "Changing
+  options at runtime" above).
   """
+  @spec update(t(), atom(), term()) :: t()
+  def update(config, key, value) do
+    value = merge(Map.get(config.options, key), value)
+
+    config
+    |> put(key, value)
+    |> check_traps!()
+    |> check_startup_only!(config, key)
+  end
+
+  defp merge(current, given) do
+    if keyword?(current) and keyword?(given),
+      do: Keyword.merge(current, given, fn _key, current, given -> merge(current, given) end),
+      else: given
+  end
+
+  defp keyword?(value), do: is_list(value) and Keyword.keyword?(value)
+
+  defp check_startup_only!(updated, config, key) do
+    changed =
+      case Map.fetch(@startup_only, key) do
+        {:ok, :all} -> updated[key] != config[key]
+        {:ok, keys} -> Enum.find(keys, &(updated[key][&1] != config[key][&1]))
+        :error -> nil
+      end
+
+    cond do
+      changed in [nil, false] ->
+        updated
+
+      key == :lists ->
+        raise ArgumentError, "lists are loaded at startup, change them with Limen.Lists instead"
+
+      changed == true ->
+        raise ArgumentError, "the #{inspect(key)} option is read at startup, restart the instance"
+
+      true ->
+        raise ArgumentError,
+              "the #{inspect(key)} option #{inspect(changed)} is read at startup, " <>
+                "restart the instance"
+    end
+  end
+
+  @doc false
   @spec put(t(), atom(), term()) :: t()
   def put(_config, key, _value) when key in [:secret_key, :previous_secret_keys, :keys] do
     raise ArgumentError, "secret keys cannot be changed at runtime, restart the instance instead"
@@ -356,8 +439,13 @@ defmodule Limen.Config do
 
   def put(config, key, value) do
     case validate(key, value, config) do
-      {:ok, value} -> Map.put(config, key, value)
-      {:error, message} -> raise ArgumentError, "invalid Limen #{key} option: #{message}"
+      {:ok, validated} ->
+        config
+        |> Map.put(key, validated)
+        |> Map.update(:options, %{key => value}, &Map.put(&1, key, value))
+
+      {:error, message} ->
+        raise ArgumentError, "invalid Limen #{key} option: #{message}"
     end
   end
 

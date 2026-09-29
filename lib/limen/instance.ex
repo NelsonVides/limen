@@ -8,9 +8,9 @@ defmodule Limen.Instance do
   `Limen.Context`: finding an instance never involves a process, a registry or
   an ETS lookup.
 
-  Changing an instance's configuration at runtime republishes the struct,
-  which triggers a global GC scan in the runtime: treat it as an operator
-  action, not something to do per request.
+  Changing an instance's configuration at runtime (`update_config/3`)
+  republishes the struct, which triggers a global GC scan in the runtime:
+  treat it as an operator action, not something to do per request.
   """
 
   use Limen.Boundary, type: :strict, deps: [Limen.Config]
@@ -87,12 +87,16 @@ defmodule Limen.Instance do
   end
 
   @doc """
-  Validates and replaces one configuration option of a running instance.
+  Validates and changes one configuration option of a running instance.
+
+  Keyword lists are merged into the option's current value, see
+  `Limen.Config.update/3`. Raises `ArgumentError` on an invalid value, or
+  for an option only read when the instance starts.
   """
-  @spec put_config(atom(), atom(), term()) :: :ok
-  def put_config(name, key, value) do
+  @spec update_config(atom(), atom(), term()) :: :ok
+  def update_config(name, key, value) do
     instance = fetch!(name)
-    publish(%{instance | config: Limen.Config.put(instance.config, key, value)})
+    publish(%{instance | config: Limen.Config.update(instance.config, key, value)})
   end
 
   @doc """

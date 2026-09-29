@@ -75,4 +75,71 @@ defmodule Limen.InstanceTest do
       Limen.Config.build(mode: :sometimes)
     end
   end
+
+  describe "update_config/3" do
+    setup do
+      name = :limen_test_updated
+
+      config = [
+        secret_key: String.duplicate("s", 32),
+        trap: [paths: ["/archive"], min_fill_time: 3_000],
+        asn: [refresh: [every: 3_600_000, jitter: 0.5]],
+        lists: [office: ["a"]]
+      ]
+
+      start_supervised!({Limen, name: name, config: config})
+      %{name: name}
+    end
+
+    test "merges keyword options into their current values", %{name: name} do
+      :ok = Limen.update_config(name, :trap, min_fill_time: 0)
+      assert %{paths: ["/archive"], min_fill_time: 0} = Instance.fetch!(name).config.trap
+
+      # Nested keyword options merge too.
+      :ok = Limen.update_config(name, :fcrdns, interval: 10)
+      :ok = Limen.update_config(name, :fcrdns, timeout: 500)
+      assert %{interval: 10, timeout: 500} = Instance.fetch!(name).config.fcrdns
+
+      # Other values replace the current ones.
+      :ok = Limen.update_config(name, :trap, paths: ["/elsewhere"])
+      assert %{paths: ["/elsewhere"], min_fill_time: 0} = Instance.fetch!(name).config.trap
+      assert Instance.fetch!(name).config.trap.routes == [{["elsewhere"], "/elsewhere"}]
+
+      :ok = Limen.set_mode(name, :enforce)
+      assert Instance.fetch!(name).config.mode == :enforce
+    end
+
+    test "validates like at startup and changes nothing on error", %{name: name} do
+      before = Instance.fetch!(name).config
+
+      assert_raise ArgumentError, ~r/invalid Limen trap option/, fn ->
+        Limen.update_config(name, :trap, min_fill_time: -1)
+      end
+
+      assert_raise ArgumentError, ~r/is under the challenge path/, fn ->
+        Limen.update_config(name, :challenge, path: "/archive")
+      end
+
+      assert Instance.fetch!(name).config == before
+    end
+
+    test "refuses options only read at startup", %{name: name} do
+      assert_raise ArgumentError, ~r/:state option :max_keys is read at startup/, fn ->
+        Limen.update_config(name, :state, max_keys: 10)
+      end
+
+      assert_raise ArgumentError, ~r/:asn option :refresh is read at startup/, fn ->
+        Limen.update_config(name, :asn, refresh: [jitter: 0.1])
+      end
+
+      assert_raise ArgumentError, ~r/with Limen.Lists/, fn ->
+        Limen.update_config(name, :lists, office: ["b"])
+      end
+
+      # Unchanged, or changing what is read at runtime, is fine.
+      :ok = Limen.update_config(name, :asn, refresh: [jitter: 0.5], hosting: [64_496])
+      :ok = Limen.update_config(name, :state, max_bans: 10)
+      assert Instance.fetch!(name).config.state.max_bans == 10
+    end
+  end
 end

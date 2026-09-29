@@ -199,5 +199,23 @@ defmodule Limen do
   Routes and plugs with an explicit `:mode` keep theirs.
   """
   @spec set_mode(instance(), :dry_run | :enforce) :: :ok
-  def set_mode(instance, mode), do: Instance.put_config(instance, :mode, mode)
+  def set_mode(instance, mode), do: update_config(instance, :mode, mode)
+
+  @doc """
+  Changes an option of a running instance.
+
+  Options given as keyword lists are merged into their current values, so
+  only the given keys change:
+
+      Limen.update_config(:my_app, :trap, min_fill_time: 1_000)
+      Limen.update_config(:my_app, :maze, max_concurrent: 50)
+
+  Any other value replaces the option's. The new configuration is validated
+  like the one the instance started with, and published at once; see
+  "Changing options at runtime" in `Limen.Config` for the few options that
+  can only change with a restart. Publishing triggers a global GC scan in
+  the runtime, so treat it as an operator action, not a per-request one.
+  """
+  @spec update_config(instance(), atom(), term()) :: :ok
+  def update_config(instance, key, value), do: Instance.update_config(instance, key, value)
 end
