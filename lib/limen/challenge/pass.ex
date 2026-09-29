@@ -37,7 +37,7 @@ defmodule Limen.Challenge.Pass do
   @spec verify(Context.t()) ::
           {:ok, non_neg_integer()} | {:error, :missing | :malformed | :invalid | :expired}
   def verify(%Context{} = ctx) do
-    case cookie(ctx.cookie_headers, ctx.instance.config.challenge.cookie) do
+    case find_header(ctx.cookie_headers, ctx.instance.cookie_pattern) do
       nil -> {:error, :missing}
       value -> verify(value, ctx)
     end
@@ -95,27 +95,65 @@ defmodule Limen.Challenge.Pass do
       "abc"
   """
   @spec cookie([String.t()], String.t()) :: String.t() | nil
-  def cookie(cookie_headers, name), do: find_header(cookie_headers, name <> "=")
+  def cookie(cookie_headers, name),
+    do: find_header(cookie_headers, :binary.compile_pattern(name <> "="))
 
   # HTTP/2 clients may send each cookie in its own header.
-  defp find_header([value | cookie_headers], prefix) do
-    case find_cookie(:binary.split(value, ";", [:global]), prefix) do
-      nil -> find_header(cookie_headers, prefix)
+  defp find_header([value | cookie_headers], pattern) do
+    case find_cookie(value, pattern, 0) do
+      nil -> find_header(cookie_headers, pattern)
       cookie -> cookie
     end
   end
 
-  defp find_header([], _prefix), do: nil
+  defp find_header([], _pattern), do: nil
 
-  defp find_cookie([], _prefix), do: nil
+  # Searches for `name=` rather than splitting the header into cookies. The
+  # name can also appear inside another cookie's name or value, so a match
+  # only counts where a cookie starts.
+  defp find_cookie(value, pattern, from) do
+    case :binary.match(value, pattern, scope: {from, byte_size(value) - from}) do
+      :nomatch ->
+        nil
 
-  defp find_cookie([pair | rest], prefix) do
-    pair = String.trim_leading(pair)
-    size = byte_size(prefix)
+      {start, length} ->
+        if starts_cookie?(value, start, start - 1),
+          do: cookie_value(value, start + length, start + length),
+          else: find_cookie(value, pattern, start + 1)
+    end
+  end
 
-    case pair do
-      <<^prefix::binary-size(^size), value::binary>> -> String.trim_trailing(value)
-      _other -> find_cookie(rest, prefix)
+  # A cookie starts the header or follows a ";", after optional whitespace.
+  defp starts_cookie?(_value, _start, -1), do: true
+
+  defp starts_cookie?(value, start, at) do
+    case :binary.at(value, at) do
+      ?; -> true
+      byte when byte in [?\s, ?\t] -> starts_cookie?(value, start, at - 1)
+      _other -> blank_since_separator?(value, start)
+    end
+  end
+
+  # Anything else between the previous ";" and the name must be whitespace
+  # as `String.trim_leading/1` knows it, as when cookies were split.
+  defp blank_since_separator?(value, start) do
+    after_separator =
+      case :binary.matches(value, ";", scope: {0, start}) do
+        [] -> 0
+        separators -> elem(List.last(separators), 0) + 1
+      end
+
+    String.trim_leading(binary_part(value, after_separator, start - after_separator)) == ""
+  end
+
+  # The value runs to the next ";" or the end of the header.
+  defp cookie_value(value, from, at) when at == byte_size(value),
+    do: String.trim_trailing(binary_part(value, from, at - from))
+
+  defp cookie_value(value, from, at) do
+    case :binary.at(value, at) do
+      ?; -> String.trim_trailing(binary_part(value, from, at - from))
+      _byte -> cookie_value(value, from, at + 1)
     end
   end
 end

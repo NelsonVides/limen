@@ -16,7 +16,18 @@ defmodule Limen.Instance do
   use Boundary, type: :strict, deps: [Limen.Config]
 
   @enforce_keys [:name, :config]
-  defstruct [:name, :config, :supervisor, :stats, :log, :state, :tarpit, :maze, :replay]
+  defstruct [
+    :name,
+    :config,
+    :supervisor,
+    :stats,
+    :log,
+    :state,
+    :tarpit,
+    :maze,
+    :replay,
+    :cookie_pattern
+  ]
 
   @type t :: %__MODULE__{
           name: atom(),
@@ -27,7 +38,8 @@ defmodule Limen.Instance do
           state: map() | nil,
           tarpit: :atomics.atomics_ref() | nil,
           maze: :atomics.atomics_ref() | nil,
-          replay: term()
+          replay: term(),
+          cookie_pattern: :binary.cp() | nil
         }
 
   @doc """
@@ -96,10 +108,15 @@ defmodule Limen.Instance do
     end)
   end
 
+  # What is derived from the configuration is derived again on every
+  # publish, so a configuration change cannot leave it stale: the pass
+  # cookie's name, compiled for searching cookie headers.
   @doc false
   @spec publish(t()) :: :ok
-  def publish(%__MODULE__{name: name} = instance),
-    do: :persistent_term.put({Limen, name}, instance)
+  def publish(%__MODULE__{name: name, config: config} = instance) do
+    pattern = :binary.compile_pattern(config.challenge.cookie <> "=")
+    :persistent_term.put({Limen, name}, %{instance | cookie_pattern: pattern})
+  end
 
   @doc false
   @spec unpublish(atom()) :: :ok

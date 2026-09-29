@@ -131,6 +131,18 @@ defmodule Limen.Challenge.TokenTest do
     test "are read from any cookie header" do
       assert Pass.cookie(["a=1", "b=2;  _limen_pass=v1 ; c=3"], "_limen_pass") == "v1"
       assert Pass.cookie(["x_limen_pass=no"], "_limen_pass") == nil
+      assert Pass.cookie(["a=_limen_pass=no; _limen_pass=v2"], "_limen_pass") == "v2"
+    end
+
+    test "follow the cookie name when it changes at runtime", %{limen: limen, client: client} do
+      {value, _ttl} = Pass.issue(client.([]))
+      Limen.Instance.put_config(limen, :challenge, cookie: "renamed")
+      renamed = client.(instance: instance(limen), cookie_headers: ["renamed=#{value}"])
+
+      assert {:ok, _expires_at} = Pass.verify(renamed)
+
+      assert Pass.verify(%{renamed | cookie_headers: ["_limen_pass=#{value}"]}) ==
+               {:error, :missing}
     end
   end
 
