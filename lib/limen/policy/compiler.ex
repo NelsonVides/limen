@@ -45,7 +45,7 @@ defmodule Limen.Policy.Compiler do
   end
 
   @doc """
-  Expands an observed helper call again, on its own, for `__observe__/2`.
+  Expands an observed helper call again, on its own, for `__match__/2`.
   """
   @spec expand_observed(Macro.t(), Macro.t(), MapSet.t(atom()), Macro.Env.t()) :: Macro.t()
   def expand_observed(ast, ctx, provided, env), do: elem(expand(ast, ctx, provided, env), 0)

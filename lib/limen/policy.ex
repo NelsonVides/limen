@@ -22,8 +22,8 @@ defmodule Limen.Policy do
         end
       end
 
-  Every rule compiles to a plain function at compile time; evaluating a
-  policy is a handful of function calls and map lookups.
+  A policy compiles to plain functions: evaluating a request is one call into
+  the policy module, which checks its rules with local calls.
 
   ## Evaluation
 
@@ -245,16 +245,15 @@ defmodule Limen.Policy do
     {decide_ast, clauses} = Compiler.decide(decide, scope.ctx, scope.provided, env)
 
     metadata =
-      compiled
-      |> Enum.map(& &1.meta)
-      |> rule_metadata()
+      %{rules: Enum.map(compiled, & &1.meta)}
       |> Map.merge(references(compiled, decide, signals, scope))
       |> Map.merge(%{limits: limits, mode: Keyword.get(opts, :mode), clauses: clauses})
 
     [
       metadata_function(metadata),
+      evaluate_function(compiled, scope.ctx),
       Enum.map(compiled, &rule_function(&1, scope.ctx)),
-      Enum.map(compiled, &observe_function(&1, scope.ctx)),
+      Enum.map(compiled, &match_function(&1, scope.ctx)),
       decide_function(decide_ast, scope)
     ]
   end
@@ -281,12 +280,6 @@ defmodule Limen.Policy do
       limits: limits,
       decide: Module.get_attribute(env.module, :limen_decide) || default_decide()
     }
-  end
-
-  # Rules are split once here, so that evaluating a request does not.
-  defp rule_metadata(rules) do
-    {short_circuit, scored} = Enum.split_with(rules, &(&1.kind in [:allow, :deny, :maze]))
-    %{rules: rules, short_circuit: short_circuit, scored: scored}
   end
 
   # The rates to track and the signals to collect, from what the rules and the
@@ -317,10 +310,97 @@ defmodule Limen.Policy do
     end
   end
 
+  # Evaluating a request is a single call into the policy, which checks its
+  # rules with local calls in the order they are written.
+  defp evaluate_function(compiled, ctx) do
+    {short_circuit, scored} =
+      Enum.split_with(compiled, &(&1.meta.kind in [:allow, :deny, :maze]))
+
+    scoring =
+      quote do
+        score = 0
+        matches = []
+        unquote_splicing(Enum.map(scored, &score_rule(&1.meta, ctx)))
+        {clause, result} = __decide__(score, unquote(ctx))
+        {action, params} = Limen.Decision.normalize(result)
+
+        %{
+          action: action,
+          params: params,
+          stage: :decide,
+          score: score,
+          matches: :lists.reverse(matches),
+          clause: clause,
+          errors: errors
+        }
+      end
+
+    body = List.foldr(short_circuit, scoring, &short_circuit_rule(&1.meta, &2, ctx))
+
+    quote do
+      unquote(inline(compiled))
+
+      @doc false
+      def __evaluate__(unquote(ctx)) do
+        errors = []
+        unquote(body)
+      end
+    end
+  end
+
+  # Inlined, each call keeps only the clause of the rule it names.
+  defp inline([]), do: nil
+  defp inline(_compiled), do: quote(do: @compile({:inline, __rule__: 2, __match__: 2}))
+
+  # The first allow, deny or maze rule that matches settles the request.
+  defp short_circuit_rule(%{name: name, kind: kind, opts: opts}, next, ctx) do
+    params = if opts[:ban], do: %{ban: opts.ban}, else: %{}
+
+    quote do
+      case __rule__(unquote(name), unquote(ctx)) do
+        true ->
+          %{
+            action: unquote(kind),
+            params: unquote(Macro.escape(params)),
+            stage: :rule,
+            score: 0,
+            matches: [__match__(unquote(name), unquote(ctx))],
+            clause: nil,
+            errors: errors
+          }
+
+        result ->
+          errors =
+            case result do
+              false -> errors
+              {:error, error} -> [error | errors]
+            end
+
+          unquote(next)
+      end
+    end
+  end
+
+  # Every score rule that matches adds its weight.
+  defp score_rule(%{name: name, weight: weight}, ctx) do
+    quote do
+      {score, matches, errors} =
+        case __rule__(unquote(name), unquote(ctx)) do
+          true ->
+            {score + unquote(weight), [__match__(unquote(name), unquote(ctx)) | matches], errors}
+
+          false ->
+            {score, matches, errors}
+
+          {:error, error} ->
+            {score, matches, [error | errors]}
+        end
+    end
+  end
+
   defp decide_function(decide_ast, %{score: score, ctx: ctx}) do
     quote do
-      @doc false
-      def __decide__(unquote(score), unquote(ctx)) do
+      defp __decide__(unquote(score), unquote(ctx)) do
         _bound = {unquote(score), unquote(ctx)}
         unquote(decide_ast)
       end
@@ -353,25 +433,42 @@ defmodule Limen.Policy do
     }
   end
 
+  # A rule whose condition raises does not match; the error is recorded.
   defp rule_function(%{meta: %{name: name}, expanded: expanded}, ctx) do
     quote do
-      @doc false
-      def __rule__(unquote(name), unquote(ctx)) do
+      defp __rule__(unquote(name), unquote(ctx)) do
         _bound = unquote(ctx)
         if unquote(expanded), do: true, else: false
+      rescue
+        exception -> {:error, {:rule, unquote(name), Exception.message(exception)}}
       end
     end
   end
 
-  defp observe_function(%{meta: %{name: name}, observed: observed}, ctx) do
+  # A matching rule records its condition and the value of every helper the
+  # condition used.
+  defp match_function(%{meta: meta, observed: observed}, ctx) do
     values =
       Enum.map(observed, fn {source, ast} -> quote(do: {unquote(source), unquote(ast)}) end)
 
     quote do
-      @doc false
-      def __observe__(unquote(name), unquote(ctx)) do
+      defp __match__(unquote(meta.name), unquote(ctx)) do
         _bound = unquote(ctx)
-        unquote(values)
+
+        observed =
+          try do
+            unquote(values)
+          rescue
+            exception -> [{"error", Exception.message(exception)}]
+          end
+
+        %Limen.Decision.Match{
+          name: unquote(meta.name),
+          kind: unquote(meta.kind),
+          weight: unquote(meta.weight),
+          condition: unquote(meta.condition),
+          observed: observed
+        }
       end
     end
   end
@@ -435,83 +532,7 @@ defmodule Limen.Policy do
   Limits are checked separately, see `Limen.Policy.Runtime.check_limits/2`.
   """
   @spec evaluate(module(), Context.t()) :: result()
-  def evaluate(policy, %Context{} = ctx) do
-    case first_match(policy, policy.__limen__(:short_circuit), ctx, []) do
-      {:matched, rule, match, errors} ->
-        params = if rule.opts[:ban], do: %{ban: rule.opts.ban}, else: %{}
-
-        %{
-          action: rule.kind,
-          params: params,
-          stage: :rule,
-          score: 0,
-          matches: [match],
-          clause: nil,
-          errors: errors
-        }
-
-      {:none, errors} ->
-        {score, matches, errors} = sum_scores(policy, policy.__limen__(:scored), ctx, errors)
-        {clause, result} = policy.__decide__(score, ctx)
-        {action, params} = Decision.normalize(result)
-
-        %{
-          action: action,
-          params: params,
-          stage: :decide,
-          score: score,
-          matches: matches,
-          clause: clause,
-          errors: errors
-        }
-    end
-  end
-
-  defp first_match(_policy, [], _ctx, errors), do: {:none, errors}
-
-  defp first_match(policy, [rule | rest], ctx, errors) do
-    case check(policy, rule, ctx) do
-      {:ok, true} -> {:matched, rule, match(policy, rule, ctx), errors}
-      {:ok, false} -> first_match(policy, rest, ctx, errors)
-      {:error, error} -> first_match(policy, rest, ctx, [error | errors])
-    end
-  end
-
-  defp sum_scores(policy, rules, ctx, errors) do
-    {score, matches, errors} =
-      Enum.reduce(rules, {0, [], errors}, fn rule, {score, matches, errors} ->
-        case check(policy, rule, ctx) do
-          {:ok, true} -> {score + rule.weight, [match(policy, rule, ctx) | matches], errors}
-          {:ok, false} -> {score, matches, errors}
-          {:error, error} -> {score, matches, [error | errors]}
-        end
-      end)
-
-    {score, Enum.reverse(matches), errors}
-  end
-
-  defp check(policy, rule, ctx) do
-    {:ok, policy.__rule__(rule.name, ctx)}
-  rescue
-    exception -> {:error, {:rule, rule.name, Exception.message(exception)}}
-  end
-
-  defp match(policy, rule, ctx) do
-    observed =
-      try do
-        policy.__observe__(rule.name, ctx)
-      rescue
-        exception -> [{"error", Exception.message(exception)}]
-      end
-
-    %Match{
-      name: rule.name,
-      kind: rule.kind,
-      weight: rule.weight,
-      condition: rule.condition,
-      observed: observed
-    }
-  end
+  def evaluate(policy, %Context{} = ctx), do: policy.__evaluate__(ctx)
 
   @doc """
   Renders `policy` for humans.
