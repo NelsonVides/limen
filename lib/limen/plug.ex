@@ -171,8 +171,11 @@ defmodule Limen.Plug do
 
   defp segments(path) when is_binary(path), do: String.split(path, "/", trim: true)
 
+  # Plugs are usually initialised while the application compiles, maybe
+  # before the policy is: waiting for it to compile avoids a false error.
   defp validate_policy!(policy) do
-    unless Code.ensure_loaded?(policy) and function_exported?(policy, :__limen__, 1) do
+    unless is_atom(policy) and match?({:module, _}, Code.ensure_compiled(policy)) and
+             function_exported?(policy, :__limen__, 1) do
       raise ArgumentError, "#{inspect(policy)} is not a Limen.Policy"
     end
   end
