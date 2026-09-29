@@ -13,10 +13,10 @@ defmodule Limen.Signal.Behaviour do
     * `404 Not Found` responses, counted when the response is sent.
 
   The counts share one row per prefix (see `key/1`), so counting a request
-  costs one table update, and reading the counts back costs nothing. It also
-  counts requests per JA4 fingerprint, for dashboards, and on a prefix's
-  first request of each minute adds it to the HyperLogLog behind
-  `Limen.State.active_prefixes/1`.
+  costs one table update, and reading the counts back costs nothing. On a
+  prefix's first request of each minute, it also adds the prefix to the
+  HyperLogLog behind `Limen.State.active_prefixes/1`, and counts it as a
+  client of the request's JA4 fingerprint, for dashboards.
 
   `collect/1` turns the counts into signals. Scrapers tend to fetch many
   pages and few assets, and to probe paths that do not exist; browsers load
@@ -61,10 +61,7 @@ defmodule Limen.Signal.Behaviour do
   def track(conn, %Context{instance: instance, prefix: prefix, now: now} = ctx) do
     increments = increments(kind(ctx), State.new_path?(instance, prefix, ctx.path))
     {counts, first?} = Window.add_first(instance, :minute, key(prefix), increments, now)
-    # The active prefix count uses the same minutes, so a prefix only needs
-    # adding on its first request of one.
-    if first?, do: State.observe_prefix(instance, prefix, now)
-    count_ja4(instance, ctx.ja4, now)
+    if first?, do: first_request(instance, prefix, ctx.ja4, now)
 
     conn =
       Plug.Conn.register_before_send(conn, fn conn ->
@@ -73,6 +70,13 @@ defmodule Limen.Signal.Behaviour do
       end)
 
     {conn, %{ctx | rates: Map.put(ctx.rates, :behaviour, counts)}}
+  end
+
+  # The active prefix count and the clients per fingerprint use the same
+  # minutes as the row, so a prefix only needs counting once in each.
+  defp first_request(instance, prefix, ja4, now) do
+    State.observe_prefix(instance, prefix, now)
+    count_ja4(instance, ja4, now)
   end
 
   defp count_ja4(_instance, nil, _now), do: :ok

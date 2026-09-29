@@ -24,7 +24,8 @@ defmodule Limen.DashboardTest do
              Data.bans(limen, 10)
 
     assert [%{stage: :decide} | _rest] = Data.recent(limen, 3)
-    assert Data.top_ja4(limen, 10) == [%{ja4: ja4, requests: 2}]
+    # Counted once per client, not per request.
+    assert Data.top_ja4(limen, 10) == [%{ja4: ja4, clients: 1}]
   end
 
   test "computes rates between snapshots", %{limen: limen} do

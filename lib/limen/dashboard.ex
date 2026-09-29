@@ -7,9 +7,9 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
           additional_pages: [limen: {Limen.Dashboard, otp_app: :my_app}]
 
     It shows decision, challenge and trap rates, active prefixes, the busiest
-    prefixes and JA4 fingerprints of the last minute, active bans and the
-    latest sampled decisions of the instance on the node selected in the
-    dashboard. Figures are node-local; pick another node to see its view.
+    prefixes of the last minute, the JA4 fingerprints with the most clients,
+    active bans and the latest sampled decisions of the instance on the node
+    selected in the dashboard. Figures are node-local; pick another node to see its view.
 
     Takes the instance as `Limen.Plug` does, with `:instance` or `:otp_app`.
     Add one page per instance to watch several.
@@ -80,14 +80,14 @@ if Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder) do
         id="limen-ja4"
         dom_id="limen-ja4"
         page={@page}
-        title="Busiest JA4 fingerprints, this minute"
+        title="JA4 fingerprints with the most clients, this minute"
         row_fetcher={&rows(&1, &2, @instance, :top_ja4)}
         rows_name="fingerprints"
         search={false}
         limit={false}
       >
         <:col field={:ja4} header="JA4" />
-        <:col field={:requests} header="Requests" text_align="right" sortable={:desc} />
+        <:col field={:clients} header="Clients" text_align="right" sortable={:desc} />
       </.live_table>
       <.live_table
         id="limen-bans"

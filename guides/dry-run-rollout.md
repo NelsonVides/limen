@@ -36,9 +36,9 @@ config :my_app, Limen, decision_log: [sample_rate: 0.001, non_allow_sample_rate:
 
 For a few days, look at what would have been challenged or denied:
 
-- the Limen page of LiveDashboard shows rates, the busiest prefixes and [JA4]
-  fingerprints (hashes of each client's TLS handshake), and recent sampled
-  decisions;
+- the Limen page of LiveDashboard shows rates, the busiest prefixes, the
+  [JA4] fingerprints (hashes of each client's TLS handshake) with the most
+  clients, and recent sampled decisions;
 - the decision log has one structured report per sampled decision, with the
   matched rules and every signal;
 - your telemetry handler can count `[:limen, :decision]` events by action and

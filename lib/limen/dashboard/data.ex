@@ -67,12 +67,14 @@ defmodule Limen.Dashboard.Data do
   end
 
   @doc """
-  The JA4 fingerprints with the most requests in the current minute epoch.
+  The JA4 fingerprints with the most clients (prefixes) in the current minute
+  epoch. A prefix counts for the fingerprint of its first request of the
+  minute.
   """
-  @spec top_ja4(atom(), pos_integer()) :: [%{ja4: String.t(), requests: pos_integer()}]
+  @spec top_ja4(atom(), pos_integer()) :: [%{ja4: String.t(), clients: pos_integer()}]
   def top_ja4(name, limit) do
     for {{:limen_ja4, ja4}, count} <- top(name, :limen_ja4, limit) do
-      %{ja4: ja4, requests: count}
+      %{ja4: ja4, clients: count}
     end
   end
 

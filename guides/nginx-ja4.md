@@ -69,8 +69,8 @@ Limen.decision(conn).identity.ja4
 ```
 
 or in the explanation of any sampled decision, whose identity lines include
-`ja4: t13d...`. The LiveDashboard page lists the busiest fingerprints of the
-last minute.
+`ja4: t13d...`. The LiveDashboard page lists the fingerprints with the most
+clients (prefixes) in the current minute.
 
 ## Using fingerprints
 
