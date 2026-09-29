@@ -33,11 +33,40 @@ defmodule Limen.IP do
   """
   @spec parse(String.t()) :: {:ok, :inet.ip_address()} | :error
   def parse(string) when is_binary(string) do
-    case :inet.parse_strict_address(String.to_charlist(String.trim(string))) do
-      {:ok, ip} -> {:ok, ip}
-      {:error, _reason} -> :error
+    with :error <- parse_ipv4(string),
+         {:error, _reason} <- :inet.parse_strict_address(String.to_charlist(String.trim(string))) do
+      :error
     end
   end
+
+  # Canonical dotted quads, the common case, parsed without a charlist.
+  # Anything else, leading zeros and surrounding space included, takes the
+  # general path, so the accepted forms are those of `:inet`.
+  defp parse_ipv4(string) do
+    with {a, "." <> rest} <- octet(string),
+         {b, "." <> rest} <- octet(rest),
+         {c, "." <> rest} <- octet(rest),
+         {d, ""} <- octet(rest) do
+      {:ok, {a, b, c, d}}
+    else
+      _other -> :error
+    end
+  end
+
+  defp octet(<<?0, rest::binary>>), do: {0, rest}
+
+  defp octet(<<a, b, c, rest::binary>>) when a in ?1..?9 and b in ?0..?9 and c in ?0..?9 do
+    case (a - ?0) * 100 + (b - ?0) * 10 + c - ?0 do
+      n when n <= 255 -> {n, rest}
+      _n -> :error
+    end
+  end
+
+  defp octet(<<a, b, rest::binary>>) when a in ?1..?9 and b in ?0..?9,
+    do: {(a - ?0) * 10 + b - ?0, rest}
+
+  defp octet(<<a, rest::binary>>) when a in ?1..?9, do: {a - ?0, rest}
+  defp octet(_other), do: :error
 
   @doc """
   Converts an address tuple to `{version, integer}`.

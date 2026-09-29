@@ -94,14 +94,18 @@ defmodule Limen.Challenge.Pass do
       "abc"
   """
   @spec cookie([{String.t(), String.t()}], String.t()) :: String.t() | nil
-  def cookie(headers, name) do
-    prefix = name <> "="
+  def cookie(headers, name), do: find_header(headers, name <> "=")
 
-    Enum.find_value(headers, fn
-      {"cookie", value} -> find_cookie(:binary.split(value, ";", [:global]), prefix)
-      _other -> nil
-    end)
+  # HTTP/2 clients may send each cookie in its own header.
+  defp find_header([{"cookie", value} | headers], prefix) do
+    case find_cookie(:binary.split(value, ";", [:global]), prefix) do
+      nil -> find_header(headers, prefix)
+      cookie -> cookie
+    end
   end
+
+  defp find_header([_header | headers], prefix), do: find_header(headers, prefix)
+  defp find_header([], _prefix), do: nil
 
   defp find_cookie([], _prefix), do: nil
 

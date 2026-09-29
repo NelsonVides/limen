@@ -6,6 +6,38 @@ defmodule Limen.IPTest do
 
   doctest Limen.IP
 
+  describe "parse/1" do
+    property "accepts exactly what :inet accepts, as the same address" do
+      check all string <- string(~c"0123456789. :abcdef", max_length: 20) do
+        expected =
+          case :inet.parse_strict_address(String.to_charlist(String.trim(string))) do
+            {:ok, ip} -> {:ok, ip}
+            {:error, _reason} -> :error
+          end
+
+        assert IP.parse(string) == expected
+      end
+    end
+
+    property "parses every dotted quad" do
+      check all parts <- list_of(integer(0..255), length: 4) do
+        assert IP.parse(Enum.join(parts, ".")) == {:ok, List.to_tuple(parts)}
+      end
+    end
+
+    test "leaves unusual forms to :inet" do
+      for string <- ["01.2.3.4", " 1.2.3.4 ", "1.2.3", "1.2.3.4.5", "256.1.1.1", "1.2.3.04"] do
+        expected =
+          case :inet.parse_strict_address(String.to_charlist(String.trim(string))) do
+            {:ok, ip} -> {:ok, ip}
+            {:error, _reason} -> :error
+          end
+
+        assert IP.parse(string) == expected, string
+      end
+    end
+  end
+
   describe "prefix/3" do
     test "aggregates IPv6 to the configured length" do
       ip = {0x2001, 0xDB8, 0xAAAA, 0xBBBB, 1, 2, 3, 4}

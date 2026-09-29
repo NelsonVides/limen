@@ -62,12 +62,12 @@ defmodule Limen.Signal.JA4 do
   """
   @spec valid?(String.t()) :: boolean()
   def valid?(
-        <<protocol, v1, v2, sni, c1, c2, e1, e2, a1, a2, ?_, ciphers::binary-size(12), ?_,
-          extensions::binary-size(12)>>
+        <<protocol, version::binary-size(2), sni, counts::binary-size(4), alpn::binary-size(2),
+          ?_, ciphers::binary-size(12), ?_, extensions::binary-size(12)>>
       )
       when protocol in [?t, ?q, ?d] and sni in [?d, ?i] do
-    digits?(<<v1, v2, c1, c2, e1, e2>>) and alphanumeric?(<<a1, a2>>) and
-      hex?(ciphers <> extensions)
+    digits?(version) and digits?(counts) and alphanumeric?(alpn) and hex?(ciphers) and
+      hex?(extensions)
   end
 
   def valid?(_value), do: false
