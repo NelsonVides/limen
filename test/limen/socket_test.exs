@@ -169,7 +169,11 @@ defmodule Limen.SocketTest do
         router: Router,
         view: PageLive,
         assigns: %{__changed__: %{}, live_action: action},
-        private: %{connect_info: Map.put(connect_info, :uri, websocket), connect_params: params}
+        private: %{
+          connect_info: Map.put(connect_info, :uri, websocket),
+          connect_params: params,
+          lifecycle: %Phoenix.LiveView.Lifecycle{}
+        }
       }
     end
 
@@ -215,6 +219,32 @@ defmodule Limen.SocketTest do
 
       assert {:trapped, %Limen.Decision{stage: :trap, identity: %{client_ip: {127, 0, 0, 1}}}} =
                Limen.LiveView.check_form(mounted, %{"_limen_form" => token}, instance: limen)
+    end
+
+    # In production the connect info's URI is the socket's, not the page's.
+    @tag config: [mode: :enforce]
+    test "form checks record the page's path, not the socket's", %{limen: limen} do
+      socket = socket(connect_info(), %{"_limen" => page_token(limen)})
+
+      # Views rendered outside the router get no URL to follow.
+      {:cont, outside} =
+        Limen.LiveView.on_mount([instance: limen], %{}, %{}, %{socket | router: nil})
+
+      assert outside.private.lifecycle.handle_params == []
+
+      {:cont, mounted} = Limen.LiveView.on_mount([instance: limen], %{}, %{}, socket)
+      mounted = %{mounted | private: Map.delete(mounted.private, :connect_info)}
+      assert [%{id: :limen_page}] = mounted.private.lifecycle.handle_params
+
+      # Before LiveView reports the page, the socket's URI is all there is.
+      assert {:trapped, %Limen.Decision{path: "/live/websocket"}} =
+               Limen.LiveView.check_form(mounted, %{}, instance: limen)
+
+      {:cont, mounted} =
+        Limen.LiveView.__handle_params__(%{}, "http://www.example.com/signup?step=2", mounted)
+
+      assert {:trapped, %Limen.Decision{path: "/signup", method: "GET"}} =
+               Limen.LiveView.check_form(mounted, %{}, instance: limen)
     end
 
     test "needs the instance" do

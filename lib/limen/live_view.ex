@@ -45,7 +45,10 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
 
     The hook also keeps the connection's connect info, which LiveView only
     exposes while mounting, so that `check_form/3` can check form traps (see
-    `Limen.Trap`) in `handle_event/3`.
+    `Limen.Trap`) in `handle_event/3`. The connect info describes the
+    socket, whose URI is the socket's own (`/live/websocket`), so for views
+    mounted at the router the hook also follows the page's URL as LiveView
+    reports it to `handle_params/3`, and form checks record the page's path.
     """
 
     import Phoenix.LiveView
@@ -143,8 +146,32 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
       connect_params = get_connect_params(socket) || %{}
 
       case Limen.Socket.check(connect_info, connect_params, with_facts(opts, socket)) do
-        {:ok, _decision} -> {:cont, put_private(socket, :limen_connect_info, connect_info)}
-        {:error, _decision} -> {:halt, redirect(socket, to: page_path(socket, params))}
+        {:ok, _decision} ->
+          socket = put_private(socket, :limen_connect_info, connect_info)
+          {:cont, follow_page(socket)}
+
+        {:error, _decision} ->
+          {:halt, redirect(socket, to: page_path(socket, params))}
+      end
+    end
+
+    # LiveView tells a view its URL in handle_params, after mounting and on
+    # every live navigation; only views mounted at the router get it.
+    defp follow_page(%{router: nil} = socket), do: socket
+
+    defp follow_page(socket),
+      do: attach_hook(socket, :limen_page, :handle_params, &__MODULE__.__handle_params__/3)
+
+    @doc false
+    @spec __handle_params__(map(), String.t(), Phoenix.LiveView.Socket.t()) ::
+            {:cont, Phoenix.LiveView.Socket.t()}
+    def __handle_params__(_params, uri, socket) do
+      case socket.private[:limen_connect_info] do
+        %{} = info ->
+          {:cont, put_private(socket, :limen_connect_info, %{info | uri: URI.parse(uri)})}
+
+        nil ->
+          {:cont, socket}
       end
     end
 
