@@ -105,15 +105,17 @@ defmodule Limen.Signal.HttpShape do
 
   @impl true
   def collect(%Context{} = ctx) do
+    %{shape: %{ignore_headers: ignored}, ja4_header: ja4_header} = ctx.instance.config
     ua = UserAgent.parse(ctx.user_agent)
+    {names, seen} = read(ctx.headers, ja4_header, ignored)
 
     Context.put_signals(
       ctx,
       %{
         ua_family: ua.family,
         ua_version: ua.version,
-        shape: shape(ctx),
-        shape_flags: flags(ctx, ua)
+        shape: hash(names),
+        shape_flags: raised(ua, seen, ctx.scheme == :https, patterns())
       },
       %{ua_family: Map.delete(ua, :family)}
     )
@@ -123,73 +125,137 @@ defmodule Limen.Signal.HttpShape do
   The header-order shape of a request.
   """
   @spec shape(Context.t()) :: String.t()
-  def shape(%Context{headers: headers, instance: %{config: config}}) do
+  def shape(%Context{instance: %{config: config}} = ctx) do
     %{shape: %{ignore_headers: ignored}, ja4_header: ja4_header} = config
-
-    names =
-      for {name, _value} <- headers,
-          not proxy_header?(name) and name != ja4_header and not is_map_key(ignored, name),
-          do: name
-
-    Base.encode16(<<:erlang.phash2(names, 1 <<< 32)::32>>, case: :lower)
+    {names, _seen} = read(ctx.headers, ja4_header, ignored)
+    hash(names)
   end
-
-  for name <- @proxy_headers, do: defp(proxy_header?(unquote(name)), do: true)
-  defp proxy_header?(_name), do: false
 
   @doc """
   The inconsistencies between a request's headers and its user agent.
   """
   @spec flags(Context.t(), UserAgent.t()) :: [atom()]
   def flags(%Context{} = ctx, ua) do
-    headers =
-      :maps.from_list(for {name, _value} = header <- ctx.headers, flag_header?(name), do: header)
-
-    flags =
-      missing_headers(ua, headers) ++
-        browser_flags(ua, headers, ctx.scheme == :https, patterns())
-
-    for {flag, true} <- flags, do: flag
+    # Names are left aside, so none need skipping.
+    {_names, seen} = read(ctx.headers, nil, %{})
+    raised(ua, seen, ctx.scheme == :https, patterns())
   end
 
-  for name <- @flag_headers, do: defp(flag_header?(unquote(name)), do: true)
-  defp flag_header?(_name), do: false
-
-  defp missing_headers(ua, headers) do
-    [
-      {:no_user_agent, ua.family == :none},
-      {:no_accept, not Map.has_key?(headers, "accept")},
-      {:no_accept_language, not Map.has_key?(headers, "accept-language")},
-      {:no_accept_encoding, not Map.has_key?(headers, "accept-encoding")}
-    ]
+  defp hash(names) do
+    hash = :erlang.phash2(:lists.reverse(names), 1 <<< 32)
+    Base.encode16(<<hash::32>>, case: :lower)
   end
 
-  defp browser_flags(%{engine: nil} = ua, headers, _secure?, patterns) do
-    [{:headless, ua.family == :headless or headless_hints?(headers, patterns)}]
+  # One pass over the headers collects the names that make up the shape,
+  # last first, and the values of the headers flags look at. Their values
+  # stay in the arguments `@seen`, in the order of `@flag_headers`, until the
+  # end: the pass allocates nothing but the list of names. As in a map, a
+  # repeated header's last value wins.
+  @seen Macro.generate_arguments(length(@flag_headers), __MODULE__)
+  @seen_keys Enum.map(@flag_headers, &String.to_atom(String.replace(&1, "-", "_")))
+
+  defp read(headers, ja4_header, ignored),
+    do:
+      read(headers, ja4_header, ignored, [], unquote_splicing(List.duplicate(nil, length(@seen))))
+
+  defp read([{name, value} | rest], ja4_header, ignored, names, unquote_splicing(@seen)) do
+    header(
+      byte_size(name),
+      name,
+      value,
+      rest,
+      ja4_header,
+      ignored,
+      names,
+      unquote_splicing(@seen)
+    )
   end
 
-  defp browser_flags(ua, headers, secure?, patterns) do
-    hints? = Map.has_key?(headers, "sec-ch-ua")
+  defp read([], _ja4_header, _ignored, names, unquote_splicing(@seen)),
+    do: {names, %{unquote_splicing(Enum.zip(@seen_keys, @seen))}}
 
-    [
-      {:generic_accept, generic_navigation?(headers)},
-      {:no_sec_fetch, secure? and sends_sec_fetch?(ua) and not sec_fetch?(headers)},
-      {:no_client_hints, secure? and sends_client_hints?(ua) and not hints?},
-      {:unexpected_client_hints, ua.engine != :chromium and hints?},
-      {:client_hint_brand_mismatch, brand_mismatch?(ua, headers, patterns)},
-      {:client_hint_platform_mismatch, platform_mismatch?(ua, headers)},
-      {:client_hint_mobile_mismatch, mobile_mismatch?(ua, headers)},
-      {:headless, headless_hints?(headers, patterns)}
-    ]
+  # A clause per flag header, selected by the length of the name and then
+  # compared, so that each name is compared with few others. Matching the
+  # name against a literal instead would start a binary match, which
+  # allocates a match context for every header.
+  for {flag_header, index} <- Enum.with_index(@flag_headers) do
+    defp header(
+           unquote(byte_size(flag_header)),
+           name,
+           value,
+           rest,
+           ja4_header,
+           ignored,
+           names,
+           unquote_splicing(List.replace_at(@seen, index, Macro.var(:_, nil)))
+         )
+         when name === unquote(flag_header) do
+      names = if is_map_key(ignored, name), do: names, else: [name | names]
+
+      read(
+        rest,
+        ja4_header,
+        ignored,
+        names,
+        unquote_splicing(List.replace_at(@seen, index, Macro.var(:value, nil)))
+      )
+    end
   end
 
-  defp generic_navigation?(headers) do
-    headers["accept"] == "*/*" and headers["sec-fetch-dest"] in [nil, "document"]
+  defp header(size, name, _value, rest, ja4_header, ignored, names, unquote_splicing(@seen)) do
+    names =
+      if proxy_header?(size, name) or name == ja4_header or is_map_key(ignored, name),
+        do: names,
+        else: [name | names]
+
+    read(rest, ja4_header, ignored, names, unquote_splicing(@seen))
   end
 
-  defp sec_fetch?(headers) do
-    Map.has_key?(headers, "sec-fetch-mode") or Map.has_key?(headers, "sec-fetch-site")
+  for header <- @proxy_headers do
+    defp proxy_header?(unquote(byte_size(header)), name) when name === unquote(header), do: true
   end
+
+  defp proxy_header?(_size, _name), do: false
+
+  # Only raised flags are allocated: the list is built from the last flag to
+  # the first.
+  defp raised(%{engine: nil} = ua, seen, _secure?, patterns) do
+    []
+    |> flag(:headless, ua.family == :headless or headless_hints?(seen, patterns))
+    |> missing(ua, seen)
+  end
+
+  defp raised(ua, seen, secure?, patterns) do
+    hints? = seen.sec_ch_ua != nil
+
+    []
+    |> flag(:headless, headless_hints?(seen, patterns))
+    |> flag(:client_hint_mobile_mismatch, mobile_mismatch?(ua, seen))
+    |> flag(:client_hint_platform_mismatch, platform_mismatch?(ua, seen))
+    |> flag(:client_hint_brand_mismatch, brand_mismatch?(ua, seen, patterns))
+    |> flag(:unexpected_client_hints, ua.engine != :chromium and hints?)
+    |> flag(:no_client_hints, secure? and sends_client_hints?(ua) and not hints?)
+    |> flag(:no_sec_fetch, secure? and sends_sec_fetch?(ua) and not sec_fetch?(seen))
+    |> flag(:generic_accept, generic_navigation?(seen))
+    |> missing(ua, seen)
+  end
+
+  defp missing(flags, ua, seen) do
+    flags
+    |> flag(:no_accept_encoding, seen.accept_encoding == nil)
+    |> flag(:no_accept_language, seen.accept_language == nil)
+    |> flag(:no_accept, seen.accept == nil)
+    |> flag(:no_user_agent, ua.family == :none)
+  end
+
+  defp flag(flags, name, true), do: [name | flags]
+  defp flag(flags, _name, false), do: flags
+
+  defp generic_navigation?(seen) do
+    seen.accept == "*/*" and seen.sec_fetch_dest in [nil, "document"]
+  end
+
+  defp sec_fetch?(seen), do: seen.sec_fetch_mode != nil or seen.sec_fetch_site != nil
 
   defp sends_sec_fetch?(%{engine: engine, version: version}) when is_integer(version),
     do: version >= Map.fetch!(@sec_fetch_since, engine)
@@ -201,16 +267,17 @@ defmodule Limen.Signal.HttpShape do
 
   defp sends_client_hints?(_ua), do: false
 
-  defp brand_mismatch?(%{engine: :chromium, family: family}, %{"sec-ch-ua" => brands}, patterns) do
+  defp brand_mismatch?(%{engine: :chromium, family: family}, %{sec_ch_ua: brands}, patterns)
+       when brands != nil do
     case patterns.brands do
       %{^family => pattern} -> :binary.match(brands, pattern) == :nomatch
       _unknown -> true
     end
   end
 
-  defp brand_mismatch?(_ua, _headers, _patterns), do: false
+  defp brand_mismatch?(_ua, _seen, _patterns), do: false
 
-  defp platform_mismatch?(%{platform: platform}, %{"sec-ch-ua-platform" => claimed})
+  defp platform_mismatch?(%{platform: platform}, %{sec_ch_ua_platform: claimed})
        when platform != nil do
     case Map.fetch(@client_hint_platforms, claimed) do
       {:ok, hinted} -> hinted != platform and not (hinted == :android and platform == :linux)
@@ -218,16 +285,16 @@ defmodule Limen.Signal.HttpShape do
     end
   end
 
-  defp platform_mismatch?(_ua, _headers), do: false
+  defp platform_mismatch?(_ua, _seen), do: false
 
-  defp mobile_mismatch?(%{mobile: mobile}, %{"sec-ch-ua-mobile" => "?1"}), do: not mobile
-  defp mobile_mismatch?(%{mobile: mobile}, %{"sec-ch-ua-mobile" => "?0"}), do: mobile
-  defp mobile_mismatch?(_ua, _headers), do: false
+  defp mobile_mismatch?(%{mobile: mobile}, %{sec_ch_ua_mobile: "?1"}), do: not mobile
+  defp mobile_mismatch?(%{mobile: mobile}, %{sec_ch_ua_mobile: "?0"}), do: mobile
+  defp mobile_mismatch?(_ua, _seen), do: false
 
-  defp headless_hints?(%{"sec-ch-ua" => brands}, patterns),
+  defp headless_hints?(%{sec_ch_ua: brands}, patterns) when brands != nil,
     do: :binary.match(brands, patterns.headless) != :nomatch
 
-  defp headless_hints?(_headers, _patterns), do: false
+  defp headless_hints?(_seen, _patterns), do: false
 
   defp patterns do
     case :persistent_term.get(@pattern_key, nil) do
