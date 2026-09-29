@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- The formatter settings Limen exports (`import_deps: [:limen]`) now
+  include `trust/2`, so applications' formatters no longer add
+  parentheses to `trust` rules. A test keeps the export in step with the
+  policy DSL.
+
 ## 0.2.0
 
 Changes that came from running Limen in front of a real application.

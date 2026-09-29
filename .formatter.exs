@@ -1,4 +1,6 @@
-dsl = [allow: 2, deny: 2, maze: 2, score: 3, limit: 2, decide: 1]
+# The policy DSL, exported so applications' formatters keep it without parens.
+# test/limen/formatter_test.exs checks it lists every macro of Limen.Policy.
+dsl = [trust: 2, allow: 2, deny: 2, maze: 2, score: 3, limit: 2, decide: 1]
 
 # Phoenix macros used by the single-file examples, which cannot import_deps.
 examples = [get: 3, post: 3, live: 2, live: 3, live_session: 3, socket: 3, live_dashboard: 2]
