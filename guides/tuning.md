@@ -159,7 +159,9 @@ response is spent asleep, so its cost is the connection and process it holds
 bounds how many are held at once; beyond that, clients get an immediate
 `429`. Raise it if the dashboard shows many refused maze requests and you have
 connections to spare, lower it if your proxy or server limits connections
-tightly. Keep `:max_duration` under your proxy's read timeout.
+tightly. Keep `:max_duration` under your proxy's read timeout. An `:admit`
+function (see `Limen.Maze`) turns clients away while your application is
+busy, and `Limen.Maze.held/1` tells how many responses are held.
 
 Longer `:delay`s waste more of a scraper's time per byte; longer pages
 (`:paragraphs`) and more links (`:links`) give it more to crawl. A client in

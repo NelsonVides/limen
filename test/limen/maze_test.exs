@@ -121,22 +121,82 @@ defmodule Limen.MazeTest do
 
     @tag config: [maze: [delay: {0, 0}, max_concurrent: 2]]
     test "refuses clients beyond the concurrency limit", %{instance: instance} do
+      capture_events([[:limen, :maze, :refused]], instance.name)
       :atomics.put(instance.maze, 1, 2)
       conn = serve(instance)
 
       assert conn.status == 429
-      assert :atomics.get(instance.maze, 1) == 2
+      assert Maze.held(instance.name) == 2
       assert Limen.Stats.snapshot(instance).maze_refused == 1
+
+      assert_receive {:event, [:limen, :maze, :refused], %{count: 1},
+                      %{reason: :full, path: "/archive/entry"}}
 
       :atomics.put(instance.maze, 1, 0)
       assert serve(instance).status == 200
-      assert :atomics.get(instance.maze, 1) == 0
+      assert Maze.held(instance) == 0
+    end
+
+    test "counts the requests it holds", %{instance: instance} do
+      test = self()
+
+      holder =
+        spawn(fn ->
+          ctx = %Context{instance: instance, path: "/archive/entry", now: 0}
+          conn = conn(:get, "/archive/entry")
+          send(test, :serving)
+          Maze.serve(conn, ctx, "/archive")
+        end)
+
+      assert_receive :serving
+      assert eventually(fn -> Maze.held(instance.name) == 1 end)
+      Process.exit(holder, :kill)
+    end
+
+    @tag config: [maze: [delay: {0, 0}, admit: {Limen.MazeTest, :admit?, [:limen_maze_admit]}]]
+    test "asks the admission function before holding a client", %{instance: instance} do
+      capture_events([[:limen, :maze, :refused]], instance.name)
+      :persistent_term.put(:limen_maze_admit, false)
+      on_exit(fn -> :persistent_term.erase(:limen_maze_admit) end)
+
+      assert serve(instance).status == 429
+      assert_receive {:event, [:limen, :maze, :refused], _count, %{reason: :admission}}
+      assert Maze.held(instance) == 0
+
+      :persistent_term.put(:limen_maze_admit, :raise)
+      assert serve(instance).status == 429
+
+      :persistent_term.put(:limen_maze_admit, true)
+      assert serve(instance).status == 200
+      assert Limen.Stats.snapshot(instance).maze_refused == 2
     end
 
     test "restores the process priority", %{instance: instance} do
       previous = Process.flag(:priority, :normal)
       serve(instance)
       assert Process.flag(:priority, previous) == :normal
+    end
+  end
+
+  @doc false
+  def admit?(key) do
+    case :persistent_term.get(key) do
+      :raise -> raise "overloaded"
+      admit -> admit
+    end
+  end
+
+  defp eventually(check, tries \\ 100) do
+    cond do
+      check.() ->
+        true
+
+      tries == 0 ->
+        false
+
+      true ->
+        Process.sleep(5)
+        eventually(check, tries - 1)
     end
   end
 end

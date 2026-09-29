@@ -33,6 +33,12 @@ defmodule Limen.Telemetry do
         at once, or `:closed` when the client went away), `:path`,
         `:identity`.
 
+    * `[:limen, :maze, :refused]` - a client sent to the maze got an
+      immediate `429` instead.
+      * Measurements: `:count` (always 1).
+      * Metadata: `:reason` (`:full` beyond `:max_concurrent`, `:admission`
+        when the `:admit` function turned it away), `:path`, `:identity`.
+
     * `[:limen, :state, :saturated]` - a capped table refused a new key;
       requests for it fall back to approximate state.
       * Measurements: `:count` (always 1).

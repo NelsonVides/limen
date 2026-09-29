@@ -322,10 +322,26 @@ ends it immediately.
 Each response held in the maze costs one process and a few kilobytes. At most
 `:max_concurrent` are held at once; beyond that, clients get an immediate
 `429`. Nothing on the way calls a process or sends a message.
+`Limen.Maze.held/1` returns how many are held right now, for your own
+metrics.
+
+To stop taking clients in while your application is under load, give the
+maze an `:admit` function. It is called before each client is held, and
+unless it returns `true` the client gets the same `429` as when the maze is
+full:
+
+```elixir
+config :my_app, Limen, maze: [admit: {MyApp.Load, :calm?, []}]
+```
+
+It runs on the request path: keep it to reading an `:atomics` or
+`:persistent_term` value your application keeps current, never a call to a
+process.
 
 | Option | Default | |
 |---|---|---|
 | `:max_concurrent` | `200` | responses held at once |
+| `:admit` | `nil` | `{module, function, args}` deciding whether to hold a client |
 | `:max_duration` | `60_000` | milliseconds a response may take |
 | `:delay` | `{1_000, 5_000}` | milliseconds between chunks |
 | `:chunk` | `{64, 512}` | bytes per chunk |
@@ -354,7 +370,8 @@ Deploy traps in dry-run, look at who falls in, then enforce.
   the decision log and the `[:limen, :decision]` telemetry event.
 - `[:limen, :maze, :served]` telemetry: duration, bytes and chunks of each
   maze response, and whether it completed, hit the deadline or the client
-  left.
+  left; `[:limen, :maze, :refused]` for each client turned away, because
+  the maze was full or by the `:admit` function.
 - `[:limen, :ban, :added]`, whose metadata carries the `:action`.
 - The LiveDashboard page: trap hits, maze pages served and refused, and
   responses currently held in the maze.

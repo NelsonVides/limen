@@ -25,7 +25,7 @@ defmodule Limen.Dashboard.Data do
       active_prefixes: State.active_prefixes(instance),
       bans: length(BanList.list(instance)),
       tarpitted: Tarpit.held(instance),
-      in_maze: :atomics.get(instance.maze, 1),
+      in_maze: Limen.Maze.held(instance),
       memory: Enum.sum(Map.values(State.memory(instance))),
       asn: asn(name)
     }

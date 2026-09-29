@@ -150,6 +150,12 @@ defmodule Limen.Config do
         page changes. Without drift a page never changes.
       * `:max_concurrent` - requests held in the maze at once; beyond that,
         they get an immediate `429`. Defaults to `200`.
+      * `:admit` - `{module, function, args}`, called with `args` before a
+        client is held; unless it returns `true`, the client gets an
+        immediate `429`, as when the maze is full. For refusing the maze
+        while the application is under load; it runs on the request path,
+        so it must be cheap and must not call a process. Defaults to `nil`:
+        every client is admitted up to `:max_concurrent`.
       * `:max_duration` - milliseconds a maze response may take. Defaults to
         `60_000`.
       * `:delay` - `{min, max}` milliseconds between chunks. Defaults to
@@ -279,6 +285,7 @@ defmodule Limen.Config do
     bundled_corpus: true,
     drift: nil,
     max_concurrent: 200,
+    admit: nil,
     max_duration: 60_000,
     delay: {1_000, 5_000},
     chunk: {64, 512},
@@ -651,6 +658,10 @@ defmodule Limen.Config do
   defp valid_maze?(:corpus, files), do: is_list(files) and Enum.all?(files, &is_binary/1)
   defp valid_maze?(:bundled_corpus, bundled), do: is_boolean(bundled)
   defp valid_maze?(:drift, drift), do: drift in [nil, :daily, :weekly]
+  defp valid_maze?(:admit, nil), do: true
+
+  defp valid_maze?(:admit, {module, function, args}),
+    do: is_atom(module) and is_atom(function) and is_list(args)
 
   defp valid_maze?(key, value) when key in [:max_concurrent, :max_duration],
     do: is_integer(value) and value > 0

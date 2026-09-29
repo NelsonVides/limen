@@ -38,9 +38,25 @@ defmodule Limen.Maze do
   deeper. A closed connection ends it early.
 
   At most `:max_concurrent` requests are held in the maze at once, counted
-  with `:atomics`; beyond that, clients get an immediate `429`. Nothing on
-  the way calls a process or sends a message. See the `:maze` options in
-  `Limen.Config`.
+  with `:atomics` (`held/1` reads the count); beyond that, clients get an
+  immediate `429`. Nothing on the way calls a process or sends a message.
+  See the `:maze` options in `Limen.Config`.
+
+  ## Admission
+
+  Holding connections is cheap, but not free. To stop taking clients in
+  when your application is under load, give the maze an `:admit` function,
+  `{module, function, args}`: before a client is held, it is called with
+  `args` and must return `true` to let it in. Otherwise the client gets the
+  same immediate `429` as when the maze is full. It runs on the request
+  path, so it must be cheap and must not call a process: read an
+  `:atomics` or `:persistent_term` value your application keeps current.
+
+      config :my_app, Limen, maze: [admit: {MyApp.Load, :calm?, []}]
+
+  Every refusal emits a `[:limen, :maze, :refused]` event whose `:reason`
+  is `:full` or `:admission` (see `Limen.Telemetry`); an `:admit` function
+  that raises refuses the client too.
 
   ## Links
 
@@ -323,31 +339,60 @@ defmodule Limen.Maze do
   defp map_state(range, state, fun), do: Enum.map_reduce(range, state, fun)
 
   @doc """
+  The number of requests `instance` currently holds in the maze.
+  """
+  @spec held(atom() | Instance.t()) :: non_neg_integer()
+  def held(instance), do: :atomics.get(Instance.fetch!(instance).maze, 1)
+
+  @doc """
   Sends the maze page for the request to the client, slowly.
 
-  Returns the halted connection. Clients beyond `:max_concurrent` get an
-  immediate `429` instead.
+  Returns the halted connection. Clients beyond `:max_concurrent`, or that
+  the `:admit` function turns away, get an immediate `429` instead.
   """
   @spec serve(Plug.Conn.t(), Context.t(), String.t()) :: Plug.Conn.t()
   def serve(conn, %Context{instance: %Instance{maze: held} = instance} = ctx, base) do
-    %{max_concurrent: max_concurrent} = instance.config.maze
+    %{max_concurrent: max_concurrent, admit: admit} = instance.config.maze
 
-    if :atomics.add_get(held, 1, 1) <= max_concurrent do
-      try do
-        deliver(conn, ctx, base)
-      after
+    cond do
+      not admitted?(admit) ->
+        refuse(conn, ctx, :admission)
+
+      :atomics.add_get(held, 1, 1) <= max_concurrent ->
+        try do
+          deliver(conn, ctx, base)
+        after
+          :atomics.sub(held, 1, 1)
+        end
+
+      true ->
         :atomics.sub(held, 1, 1)
-      end
-    else
-      :atomics.sub(held, 1, 1)
-      Limen.Stats.incr(instance, :maze_refused)
-
-      conn
-      |> Plug.Conn.put_resp_content_type("text/plain")
-      |> Plug.Conn.put_resp_header("retry-after", "60")
-      |> Plug.Conn.send_resp(429, "Too Many Requests")
-      |> Plug.Conn.halt()
+        refuse(conn, ctx, :full)
     end
+  end
+
+  defp admitted?(nil), do: true
+
+  defp admitted?({module, function, args}) do
+    apply(module, function, args) == true
+  rescue
+    _exception -> false
+  end
+
+  defp refuse(conn, %Context{instance: instance} = ctx, reason) do
+    Limen.Stats.incr(instance, :maze_refused)
+
+    Limen.Telemetry.execute(instance.name, [:maze, :refused], %{count: 1}, %{
+      reason: reason,
+      path: ctx.path,
+      identity: Context.identity(ctx)
+    })
+
+    conn
+    |> Plug.Conn.put_resp_content_type("text/plain")
+    |> Plug.Conn.put_resp_header("retry-after", "60")
+    |> Plug.Conn.send_resp(429, "Too Many Requests")
+    |> Plug.Conn.halt()
   end
 
   defp deliver(conn, %Context{instance: instance} = ctx, base) do
