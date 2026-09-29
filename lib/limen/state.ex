@@ -55,7 +55,12 @@ defmodule Limen.State do
   @type window :: :second | :minute | :hour
   @type t :: %{
           windows: %{
-            window() => %{tables: tuple(), counts: :atomics.atomics_ref(), sketches: tuple()}
+            window() => %{
+              tables: tuple(),
+              counts: :atomics.atomics_ref(),
+              sketches: tuple(),
+              max_keys: pos_integer()
+            }
           },
           gcra: %{table: :ets.tid(), size: :atomics.atomics_ref()},
           bans: %{
@@ -106,7 +111,8 @@ defmodule Limen.State do
          %{
            tables: List.to_tuple(tables),
            counts: :atomics.new(@slots, []),
-           sketches: List.to_tuple(sketches)
+           sketches: List.to_tuple(sketches),
+           max_keys: config.max_keys
          }}
       end)
 

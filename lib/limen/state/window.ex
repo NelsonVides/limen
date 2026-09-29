@@ -142,12 +142,7 @@ defmodule Limen.State.Window do
     cleared
   end
 
-  defp slots(
-         %Instance{state: %{windows: windows}, config: %{state: %{max_keys: max_keys}}},
-         window
-       ) do
-    Map.put(Map.fetch!(windows, window), :max_keys, max_keys)
-  end
+  defp slots(%Instance{state: %{windows: windows}}, window), do: Map.fetch!(windows, window)
 
   defp incr_slot(instance, %{max_keys: max_keys} = slots, key, epoch) do
     slot = rem(epoch, State.slots())
