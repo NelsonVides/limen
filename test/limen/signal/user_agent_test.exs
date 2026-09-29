@@ -24,6 +24,12 @@ defmodule Limen.Signal.UserAgentTest do
      %{family: :crawler, name: nil}},
     {"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/128.0.0.0 Safari/537.36",
      %{family: :headless}},
+    {"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/128.0.0.0 Mobile Safari/537.36",
+     %{family: :chrome, version: 128, platform: :android, mobile: true}},
+    # Platform names can overlap markers, so they are found in a pass of
+    # their own: here "Windows" only appears within "WindowsPowerShell/".
+    {"WindowsPowerShell/5.1.19041.4648",
+     %{family: :tool, name: "powershell", platform: :windows}},
     {"Go-http-client/2.0", %{family: :tool, name: "go"}},
     {"Wget/1.21.4", %{family: :tool, name: "wget"}},
     {"Mozilla/5.0", %{family: :other, engine: nil}},

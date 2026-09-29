@@ -7,15 +7,17 @@ defmodule Limen.Signal.UserAgent do
   headers it must send), a crawler (and which one, for DNS verification), an
   automation tool or a headless browser?
 
-  Non-browser markers are found with a single pass of a precompiled
-  [Aho-Corasick] pattern, which matches many strings at once; the leftmost
-  marker wins, so a crawler that embeds a Chrome token in its user agent is
-  still a crawler.
+  Non-browser markers and browser tokens are found with a single pass of a
+  precompiled [Aho-Corasick] pattern, which matches many strings at once, and
+  platforms with a second one: a pass reports matches that do not overlap,
+  and platform names can overlap markers, as `Windows` does
+  `WindowsPowerShell/`. The leftmost marker wins, so a crawler that embeds a
+  Chrome token in its user agent is still a crawler.
 
   [Aho-Corasick]: https://doi.org/10.1145/360825.360855
   """
 
-  @pattern_key {__MODULE__, :pattern}
+  @pattern_key {__MODULE__, :patterns}
 
   @type family ::
           :chrome
@@ -126,8 +128,25 @@ defmodule Limen.Signal.UserAgent do
   ]
 
   for {marker, family, name} <- @markers do
-    defp marker(unquote(marker)), do: {unquote(family), unquote(name)}
+    defp agent(unquote(marker)), do: {:marker, unquote(family), unquote(name)}
   end
+
+  # A browser's rank is its position in @browsers: the lowest found wins.
+  for {{token, family, engine}, rank} <- Enum.with_index(@browsers) do
+    defp agent(unquote(token)), do: {:browser, unquote(rank), unquote(family), unquote(engine)}
+  end
+
+  defp agent("Safari/"), do: :safari
+
+  @version_rank Enum.find_index(@browsers, &(elem(&1, 0) == "Version/"))
+
+  for {{token, platform}, rank} <- Enum.with_index(@platforms) do
+    defp platform(unquote(token)), do: {unquote(rank), unquote(platform)}
+  end
+
+  defp platform("Mobile"), do: :mobile
+
+  @no_platform {length(@platforms), nil}
 
   # Shared by every instance: the patterns are pure. Only installed when
   # missing, since replacing a persistent term triggers a global GC.
@@ -158,50 +177,59 @@ defmodule Limen.Signal.UserAgent do
 
   def parse(ua) when is_binary(ua) do
     patterns = patterns()
-    environment = tokens(ua, patterns.platforms)
+    {platform, mobile} = environment(:binary.matches(ua, patterns.platforms), ua, @no_platform)
 
-    base = %{
-      empty(:other)
-      | platform: Enum.find_value(@platforms, fn {token, p} -> if environment[token], do: p end),
-        mobile: Map.has_key?(environment, "Mobile")
-    }
+    base = %{empty(:other) | platform: platform, mobile: mobile}
+    agent(:binary.matches(ua, patterns.agents), ua, base, nil, false)
+  end
 
-    case :binary.match(ua, patterns.markers) do
-      {start, length} ->
-        {family, name} = marker(binary_part(ua, start, length))
-        %{base | family: family, name: name}
+  # The platform listed first in @platforms wins, wherever it appears.
+  defp environment(matches, ua, best, mobile \\ false)
 
-      :nomatch ->
-        browser(ua, tokens(ua, patterns.browsers), base)
+  defp environment([{start, length} | matches], ua, {rank, _platform} = best, mobile) do
+    case platform(binary_part(ua, start, length)) do
+      :mobile ->
+        environment(matches, ua, best, true)
+
+      {found, _platform} = platform when found < rank ->
+        environment(matches, ua, platform, mobile)
+
+      _ranked_lower ->
+        environment(matches, ua, best, mobile)
     end
   end
 
-  # Every token found in `ua`, with the offset right after its first
-  # occurrence, in a single pass over the string.
-  defp tokens(ua, pattern) do
-    ua
-    |> :binary.matches(pattern)
-    |> Enum.reduce(%{}, fn {start, length}, found ->
-      Map.put_new(found, binary_part(ua, start, length), start + length)
-    end)
+  defp environment([], _ua, {_rank, platform}, mobile), do: {platform, mobile}
+
+  # The leftmost marker settles the family. Otherwise the best ranked browser
+  # token does, at its first occurrence. "Version/" also appears in Android
+  # WebView user agents, which carry a Chrome token that ranks higher; it
+  # only counts next to "Safari/".
+  defp agent([{start, length} | matches], ua, base, browser, safari?) do
+    case agent(binary_part(ua, start, length)) do
+      {:marker, family, name} ->
+        %{base | family: family, name: name}
+
+      :safari ->
+        agent(matches, ua, base, browser, true)
+
+      {:browser, rank, family, engine} ->
+        browser =
+          if better?(rank, browser), do: {rank, family, engine, start + length}, else: browser
+
+        agent(matches, ua, base, browser, safari?)
+    end
   end
 
-  # "Version/" also appears in Android WebView user agents, which carry a
-  # Chrome token that takes precedence; only Safari pairs it with "Safari/".
-  defp browser(ua, found, base) do
-    Enum.find_value(@browsers, base, fn {token, family, engine} ->
-      case found do
-        %{"Version/" => _offset, "Safari/" => _safari} when token == "Version/" ->
-          %{base | family: family, engine: engine, version: version(ua, found[token])}
-
-        %{^token => offset} when token != "Version/" ->
-          %{base | family: family, engine: engine, version: version(ua, offset)}
-
-        _missing ->
-          nil
-      end
-    end)
+  defp agent([], ua, base, {rank, family, engine, offset}, safari?)
+       when rank != @version_rank or safari? do
+    %{base | family: family, engine: engine, version: version(ua, offset)}
   end
+
+  defp agent([], _ua, base, _browser, _safari?), do: base
+
+  defp better?(_rank, nil), do: true
+  defp better?(rank, {best, _family, _engine, _offset}), do: rank < best
 
   defp version(ua, offset) do
     rest = binary_part(ua, offset, byte_size(ua) - offset)
@@ -224,9 +252,10 @@ defmodule Limen.Signal.UserAgent do
   end
 
   defp compile do
+    browsers = ["Safari/" | Enum.map(@browsers, &elem(&1, 0))]
+
     %{
-      markers: :binary.compile_pattern(Enum.map(@markers, &elem(&1, 0))),
-      browsers: :binary.compile_pattern(["Safari/" | Enum.map(@browsers, &elem(&1, 0))]),
+      agents: :binary.compile_pattern(browsers ++ Enum.map(@markers, &elem(&1, 0))),
       platforms: :binary.compile_pattern(["Mobile" | Enum.map(@platforms, &elem(&1, 0))])
     }
   end
