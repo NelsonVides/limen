@@ -21,7 +21,7 @@ defmodule Limen.Signal do
 
   | Module | Values |
   |---|---|
-  | `Limen.Signal.HttpShape` | `:ua_family`, `:ua_version`, `:shape`, `:shape_flags` |
+  | `Limen.Signal.HttpShape` | `:ua_family`, `:ua_name`, `:ua_version`, `:shape`, `:shape_flags` |
   | `Limen.Signal.Behaviour` | `:requests_per_minute`, `:not_found_ratio`, `:asset_ratio`, ... |
   | `Limen.Signal.Asn` | `:asn`, `:asn_kind`, `:asn_country`, `:asn_name` |
   | `Limen.Signal.Fcrdns` | `:fcrdns` |

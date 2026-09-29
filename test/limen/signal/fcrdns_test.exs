@@ -92,6 +92,21 @@ defmodule Limen.Signal.FcrdnsTest do
            }
   end
 
+  test "AI crawlers and link previews make claims too", %{limen: limen} do
+    amazonbot =
+      "Mozilla/5.0 (compatible; Amazonbot/0.1; +https://developer.amazon.com/support/amazonbot)"
+
+    assert {:pending, %{crawler: "amazonbot"}} = signal(limen, {203, 0, 113, 20}, amazonbot)
+
+    slack = "Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)"
+    assert {:unverifiable, %{crawler: "slackbot"}} = signal(limen, {203, 0, 113, 21}, slack)
+  end
+
+  @tag config: [fcrdns: [dns: FakeDNS, interval: 60_000], user_agents: [tool: ["Googlebot"]]]
+  test "claims follow the instance's own user agent tokens", %{limen: limen} do
+    assert {:not_claimed, nil} = signal(limen, @real)
+  end
+
   test "exposes spoofed crawlers", %{limen: limen} do
     for ip <- [@spoofer, {203, 0, 113, 10}, {203, 0, 113, 11}], do: signal(limen, ip)
     Resolver.run(limen)

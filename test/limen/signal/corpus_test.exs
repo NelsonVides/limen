@@ -113,8 +113,10 @@ defmodule Limen.Signal.CorpusTest do
     refute shape(limen, "curl") == shape(limen, "python_requests")
   end
 
-  test "crawler evidence names the crawler for DNS verification", %{limen: limen} do
-    assert %{name: "googlebot"} = evaluate(limen, "googlebot").evidence.ua_family
+  test "names the crawler for DNS verification", %{limen: limen} do
+    decision = evaluate(limen, "googlebot")
+    assert %{ua_family: :crawler, ua_name: "googlebot"} = decision.signals
+    assert %{crawler: "googlebot"} = decision.evidence.fcrdns
   end
 
   defp evaluate(limen, name) do

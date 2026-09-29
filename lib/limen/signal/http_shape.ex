@@ -39,8 +39,10 @@ defmodule Limen.Signal.HttpShape do
   Header order is only meaningful when the web server preserves it: Bandit
   does, Cowboy does not.
 
-  Provides `:ua_family`, `:ua_version`, `:shape` and `:shape_flags`, with the
-  parsed user agent as evidence for `:ua_family`.
+  Provides `:ua_family` (see `Limen.Signal.UserAgent` for the families),
+  `:ua_name` (the name of a known automated client, such as `"googlebot"`,
+  `"gptbot"` or `"curl"`, else `nil`), `:ua_version`, `:shape` and
+  `:shape_flags`, with the parsed user agent as evidence for `:ua_family`.
 
   [Fetch Metadata]: https://www.w3.org/TR/fetch-metadata/
   [UA Client Hints]: https://wicg.github.io/ua-client-hints/
@@ -87,7 +89,7 @@ defmodule Limen.Signal.HttpShape do
   @pattern_key {__MODULE__, :patterns}
 
   @impl true
-  def provides, do: [:ua_family, :ua_version, :shape, :shape_flags]
+  def provides, do: [:ua_family, :ua_name, :ua_version, :shape, :shape_flags]
 
   # Shared by every instance, like the user agent patterns: searching with a
   # precompiled pattern is about ten times faster than `String.contains?/2`,
@@ -105,14 +107,17 @@ defmodule Limen.Signal.HttpShape do
 
   @impl true
   def collect(%Context{} = ctx) do
-    %{shape: %{ignore_headers: ignored}, ja4_header: ja4_header} = ctx.instance.config
-    ua = UserAgent.parse(ctx.user_agent)
+    %{shape: %{ignore_headers: ignored}, ja4_header: ja4_header, user_agents: custom} =
+      ctx.instance.config
+
+    ua = UserAgent.parse(ctx.user_agent, custom)
     {names, seen} = read(ctx.headers, ja4_header, ignored)
 
     Context.put_signals(
       ctx,
       %{
         ua_family: ua.family,
+        ua_name: ua.name,
         ua_version: ua.version,
         shape: hash(names),
         shape_flags: raised(ua, seen, ctx.scheme == :https, patterns())

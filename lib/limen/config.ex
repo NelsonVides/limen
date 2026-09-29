@@ -106,6 +106,14 @@ defmodule Limen.Config do
       * `:concurrency` and `:timeout` - lookups in flight and milliseconds
         each may take. Default to `16` and `2_000`.
 
+    * `:user_agents` - tokens `Limen.Signal.UserAgent` classifies, on top of
+      its built-in lists, by family: `:crawler`, `:ai_crawler`,
+      `:link_preview`, `:headless` or `:tool`, each a list of tokens (named
+      after themselves) or `{token, name}` pairs, and `:ignore`, a list of
+      built-in tokens to leave out. Listing a built-in token under a family
+      moves it there. Tokens are matched as they appear in user agents, case
+      included. Defaults to `[]`.
+
     * `:shape` - HTTP shape analysis, see `Limen.Signal.HttpShape`:
       * `:ignore_headers` - headers left out of the header-order shape, such
         as those added by your proxies. Forwarding headers and the JA4 header
@@ -325,6 +333,7 @@ defmodule Limen.Config do
     asn: @asn_defaults,
     fcrdns: @fcrdns_defaults,
     shape: @shape_defaults,
+    user_agents: %{markers: %{}, pattern: nil},
     tarpit: @tarpit_defaults,
     trap: Map.put(@trap_defaults, :routes, []),
     maze: @maze_defaults,
@@ -534,6 +543,22 @@ defmodule Limen.Config do
     end
   end
 
+  defp validate(:user_agents, opts, _config) when is_list(opts) do
+    markers =
+      Enum.reduce_while(opts, %{}, fn {kind, tokens}, acc ->
+        case user_agent_tokens(kind, tokens) do
+          {:ok, tokens} -> {:cont, Map.merge(acc, tokens)}
+          :error -> {:halt, {:error, "invalid #{inspect(kind)} tokens: #{inspect(tokens)}"}}
+        end
+      end)
+
+    with %{} <- markers do
+      searched = for {token, {:marker, _family, _name}} <- markers, do: token
+      pattern = if searched != [], do: :binary.compile_pattern(searched)
+      {:ok, %{markers: markers, pattern: pattern}}
+    end
+  end
+
   defp validate(:lists, lists, _config) when is_list(lists) do
     Enum.each(lists, fn
       {name, {:cidr, ranges}} when is_atom(name) and is_list(ranges) -> Limen.IP.cidr_set(ranges)
@@ -622,6 +647,34 @@ defmodule Limen.Config do
 
   defp sink?(module),
     do: is_atom(module) and Code.ensure_loaded?(module) and function_exported?(module, :write, 2)
+
+  defp user_agent_tokens(:ignore, tokens) when is_list(tokens) do
+    if Enum.all?(tokens, &token?/1), do: {:ok, Map.new(tokens, &{&1, :ignore})}, else: :error
+  end
+
+  defp user_agent_tokens(family, tokens)
+       when family in [:crawler, :ai_crawler, :link_preview, :headless, :tool] and
+              is_list(tokens) do
+    named = Enum.map(tokens, &named_token/1)
+
+    if Enum.all?(named, fn {token, name} -> token?(token) and is_binary(name) end),
+      do: {:ok, Map.new(named, fn {token, name} -> {token, {:marker, family, name}} end)},
+      else: :error
+  end
+
+  defp user_agent_tokens(_family, _tokens), do: :error
+
+  # A token alone is named after itself: `"NewBot/"` is `"newbot"`.
+  defp named_token({token, name}), do: {token, name}
+
+  defp named_token(token) when is_binary(token) do
+    name = String.trim_trailing(String.trim(token), "/")
+    {token, String.downcase(name)}
+  end
+
+  defp named_token(other), do: {other, nil}
+
+  defp token?(token), do: is_binary(token) and token != ""
 
   defp valid_fcrdns?(:crawlers, crawlers) do
     is_map(crawlers) and

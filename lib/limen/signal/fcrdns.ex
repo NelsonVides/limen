@@ -4,6 +4,11 @@ defmodule Limen.Signal.Fcrdns do
   really does, with forward-confirmed reverse DNS (FCrDNS): the check search
   engines document themselves, as [Google does for Googlebot][FCrDNS].
 
+  Any automated client that names itself (the `:crawler`, `:ai_crawler`
+  and `:link_preview` families of `Limen.Signal.UserAgent`) makes a claim
+  this signal checks, when the configured crawlers list the domains of the
+  one it names.
+
   A crawler's address must point back, through its reverse DNS ([PTR])
   record, to a host under the crawler's published domains (for Googlebot,
   `googlebot.com` or `google.com`), and that host must resolve back to the
@@ -60,17 +65,19 @@ defmodule Limen.Signal.Fcrdns do
   end
 
   # Reuses the user agent parsed by the HTTP shape signal when available.
-  defp crawler(%Context{signals: %{ua_family: :crawler}, evidence: %{ua_family: %{name: name}}}),
+  # Search engines, AI crawlers and link previews all name themselves.
+  defp crawler(%Context{signals: %{ua_family: family, ua_name: name}}),
+    do: claim(family, name)
+
+  defp crawler(%Context{instance: instance, user_agent: user_agent}) do
+    %{family: family, name: name} = UserAgent.parse(user_agent, instance.config.user_agents)
+    claim(family, name)
+  end
+
+  defp claim(family, name) when family in [:crawler, :ai_crawler, :link_preview],
     do: name || "unknown"
 
-  defp crawler(%Context{signals: %{ua_family: _other}}), do: nil
-
-  defp crawler(%Context{user_agent: user_agent}) do
-    case UserAgent.parse(user_agent) do
-      %{family: :crawler, name: name} -> name || "unknown"
-      _browser_or_tool -> nil
-    end
-  end
+  defp claim(_browser_or_tool, _name), do: nil
 
   defp lookup(_tables, nil, _name, _now, _config), do: {:pending, %{}}
 
