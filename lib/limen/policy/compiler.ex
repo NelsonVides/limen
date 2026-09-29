@@ -89,6 +89,15 @@ defmodule Limen.Policy.Compiler do
     {call, observe(%{info | signals: MapSet.put(info.signals, key)}, node)}
   end
 
+  defp expand_node({:fact, _meta, [key]} = node, info, ctx, _provided, env) do
+    unless is_atom(key) do
+      raise_compile(env, node, "fact/1 expects an atom literal, got: #{Macro.to_string(key)}")
+    end
+
+    call = quote(do: Limen.Context.fact(unquote(ctx), unquote(key)))
+    {call, observe(info, node)}
+  end
+
   defp expand_node({helper, _meta, [name]} = node, info, ctx, _provided, env)
        when helper in [:header, :missing_header, :has_header] do
     unless is_binary(name) do

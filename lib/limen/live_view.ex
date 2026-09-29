@@ -43,6 +43,35 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
     alias Plug.Conn.Query
 
     @doc """
+    States facts about the connection, as `Limen.put_facts/2` does for
+    requests.
+
+    Call it from an `on_mount` hook that runs before this module's, such as
+    the one that loads the signed-in user:
+
+        live_session :default,
+          on_mount: [{MyAppWeb.UserAuth, :mount_current_user}, MyAppWeb.LimenFacts,
+                     {Limen.LiveView, otp_app: :my_app, policy: MyApp.BotPolicy}] do
+          ...
+        end
+
+        defmodule MyAppWeb.LimenFacts do
+          def on_mount(:default, _params, _session, socket) do
+            {:cont, Limen.LiveView.put_facts(socket, signed_in: socket.assigns.current_user != nil)}
+          end
+        end
+
+    The socket check and `check_form/3` record them in their decisions, and
+    the `trust` rules of the hook's `:policy` can use them.
+    """
+    @spec put_facts(Phoenix.LiveView.Socket.t(), map() | keyword()) ::
+            Phoenix.LiveView.Socket.t()
+    def put_facts(socket, facts) do
+      facts = Limen.Context.merge_facts(socket.private[:limen_facts] || %{}, facts)
+      put_private(socket, :limen_facts, facts)
+    end
+
+    @doc """
     Issues the socket token for the page being rendered, see
     `Limen.Socket.token/2`.
     """
@@ -83,8 +112,11 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
             {:ok, Limen.Decision.t()} | {:trapped, Limen.Decision.t()}
     def check_form(socket, params, opts) do
       connect_info = socket.private[:limen_connect_info] || connect_info(socket)
-      Limen.Trap.check_form(connect_info, params, opts)
+      Limen.Trap.check_form(connect_info, params, with_facts(opts, socket))
     end
+
+    defp with_facts(opts, socket),
+      do: Keyword.put_new(opts, :facts, socket.private[:limen_facts] || %{})
 
     defp connect_info(socket) do
       %{
@@ -98,7 +130,9 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
     defp check(socket, params, opts) do
       connect_info = connect_info(socket)
 
-      case Limen.Socket.check(connect_info, get_connect_params(socket) || %{}, opts) do
+      connect_params = get_connect_params(socket) || %{}
+
+      case Limen.Socket.check(connect_info, connect_params, with_facts(opts, socket)) do
         {:ok, _decision} -> {:cont, put_private(socket, :limen_connect_info, connect_info)}
         {:error, _decision} -> {:halt, redirect(socket, to: page_path(socket, params))}
       end

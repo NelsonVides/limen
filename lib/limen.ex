@@ -127,6 +127,38 @@ defmodule Limen do
   def decision(%Plug.Conn{private: private}), do: Map.get(private, :limen)
 
   @doc """
+  States facts about the request that policies can use, such as whether the
+  client is signed in.
+
+  Limen knows the request, not your application's users. Facts fill that
+  gap: a plug that runs before `Limen.Plug` states them, and policies read
+  them with `fact/1` like any other value, so what they change shows up in
+  every decision:
+
+      # router.ex, after the session is fetched
+      plug :limen_facts
+      plug Limen.Plug, otp_app: :my_app, policy: MyApp.BotPolicy
+
+      defp limen_facts(conn, _opts) do
+        Limen.put_facts(conn, signed_in: get_session(conn, :user_token) != nil)
+      end
+
+      # the policy
+      trust :signed_in, when: fact(:signed_in)
+
+  Facts are merged into those already stated, and recorded in the
+  decision. They are only as trustworthy as the code stating them: derive
+  them from what your application verified, never from what the client
+  sent. For sockets, see `Limen.LiveView.put_facts/2` and the `:facts`
+  option of `Limen.Socket.check/3`.
+  """
+  @spec put_facts(Plug.Conn.t(), map() | keyword()) :: Plug.Conn.t()
+  def put_facts(%Plug.Conn{private: private} = conn, facts) do
+    facts = Limen.Context.merge_facts(Map.get(private, :limen_facts, %{}), facts)
+    Plug.Conn.put_private(conn, :limen_facts, facts)
+  end
+
+  @doc """
   Bans a client for `ttl` seconds.
 
   `target` is an address (tuple or string), which is aggregated to its prefix

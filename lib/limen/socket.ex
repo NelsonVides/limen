@@ -92,6 +92,8 @@ defmodule Limen.Socket do
     * `:instance` or `:otp_app` - the instance checking the token, as for
       `Limen.Plug`. Required.
     * `:mode` - `:dry_run` or `:enforce`, overriding the instance's mode.
+    * `:facts` - facts about the connection, as for `Limen.put_facts/2`,
+      recorded in the decision.
 
   Returns `{:ok, decision}` when the connection may proceed (always, in
   dry-run mode) and `{:error, decision}` when it must be refused.
@@ -101,7 +103,7 @@ defmodule Limen.Socket do
     started = System.monotonic_time()
     instance = Instance.fetch!(Instance.name!(opts))
     mode = Keyword.get(opts, :mode) || instance.config.mode
-    ctx = Signal.identify(context(connect_info, instance), instance.config)
+    ctx = Signal.identify(context(connect_info, instance, opts), instance.config)
 
     decision =
       case BanList.lookup(instance, ctx.prefix, ctx.now) do
@@ -156,8 +158,8 @@ defmodule Limen.Socket do
   end
 
   @doc false
-  @spec context(map(), Instance.t()) :: Context.t()
-  def context(connect_info, instance) do
+  @spec context(map(), Instance.t(), keyword()) :: Context.t()
+  def context(connect_info, instance, opts \\ []) do
     address = address!(connect_info)
     uri = Map.get(connect_info, :uri) || %URI{}
 
@@ -171,6 +173,7 @@ defmodule Limen.Socket do
       path: uri.path || "/",
       query: uri.query || "",
       headers: headers(connect_info),
+      facts: Context.merge_facts(%{}, Keyword.get(opts, :facts, %{})),
       now: System.system_time(:millisecond),
       monotonic: System.monotonic_time(:microsecond)
     }

@@ -18,7 +18,14 @@ defmodule Limen.Context do
   a trusted proxy (see `Limen.Signal.ClientIP`); a request from a trusted
   proxy that carried no such header is the proxy's own.
 
-  Every signal value that ends up in a context is copied into the
+  `facts` are what the application knows about the request and Limen
+  cannot, such as whether the client is signed in. The application states
+  them with `Limen.put_facts/2` before `Limen.Plug` runs (or with
+  `Limen.LiveView.put_facts/2` and the `:facts` option of
+  `Limen.Socket.check/3` for sockets), and policies read them with
+  `fact/1`.
+
+  Every signal value and fact that ends up in a context is copied into the
   `Limen.Decision` record, so a decision can always be explained from the
   values that produced it.
   """
@@ -45,6 +52,7 @@ defmodule Limen.Context do
           headers: [{String.t(), String.t()}],
           now: integer(),
           monotonic: integer(),
+          facts: %{optional(atom()) => term()},
           signals: %{optional(atom()) => term()},
           evidence: %{optional(atom()) => term()},
           rates: %{optional(term()) => non_neg_integer() | tuple()}
@@ -67,6 +75,7 @@ defmodule Limen.Context do
             headers: [],
             now: 0,
             monotonic: 0,
+            facts: %{},
             signals: %{},
             evidence: %{},
             rates: %{}
@@ -78,7 +87,7 @@ defmodule Limen.Context do
   `now` is the system time in milliseconds, used for time windows and token
   expiry; `monotonic` is monotonic time in microseconds, used for limits.
   Tests can pin both with the `:limen_now` and `:limen_monotonic` private
-  connection fields.
+  connection fields. Facts come from `Limen.put_facts/2`.
   """
   @spec from_conn(Plug.Conn.t(), Limen.Instance.t() | nil) :: t()
   def from_conn(%Plug.Conn{private: private} = conn, instance \\ nil) do
@@ -92,6 +101,7 @@ defmodule Limen.Context do
       path: conn.request_path,
       query: conn.query_string,
       headers: conn.req_headers,
+      facts: Map.get(private, :limen_facts, %{}),
       now: Map.get_lazy(private, :limen_now, fn -> System.system_time(:millisecond) end),
       monotonic:
         Map.get_lazy(private, :limen_monotonic, fn -> System.monotonic_time(:microsecond) end)
@@ -120,6 +130,26 @@ defmodule Limen.Context do
   def signal(%__MODULE__{} = ctx, :ja4), do: ctx.ja4
   def signal(%__MODULE__{} = ctx, :user_agent), do: ctx.user_agent
   def signal(%__MODULE__{signals: signals}, key), do: Map.get(signals, key)
+
+  @doc """
+  Returns the fact `key` the application stated, or `nil`.
+  """
+  @spec fact(t(), atom()) :: term()
+  def fact(%__MODULE__{facts: facts}, key), do: Map.get(facts, key)
+
+  @doc false
+  # Facts stated again override earlier ones. Keys must be atoms, as in
+  # `fact/1` conditions.
+  @spec merge_facts(map(), map() | keyword()) :: map()
+  def merge_facts(facts, more) when is_map(more) or is_list(more) do
+    Enum.reduce(more, facts, fn
+      {key, value}, acc when is_atom(key) ->
+        Map.put(acc, key, value)
+
+      other, _acc ->
+        raise ArgumentError, "expected facts as {atom, value}, got: #{inspect(other)}"
+    end)
+  end
 
   @doc """
   Stores a signal value and, optionally, the evidence that produced it.

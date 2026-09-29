@@ -89,6 +89,7 @@ defmodule Limen.DecisionLog do
       ja4: identity[:ja4],
       rules: Enum.map(decision.matches, &"#{&1.kind}:#{&1.name}"),
       clause: decision.clause,
+      facts: decision.facts,
       signals: decision.signals,
       errors: decision.errors
     }

@@ -61,6 +61,8 @@ defmodule Limen.Policy do
 
     * `signal(key)` - a signal value, see `Limen.Signal`. Unknown keys are
       compile errors.
+    * `fact(key)` - a fact the application stated about the request, such
+      as `fact(:signed_in)`, or `nil`; see `Limen.put_facts/2`.
     * `header(name)`, `missing_header(name)`, `has_header(name)`.
     * `shape_flag(flag)` - whether `Limen.Signal.HttpShape` raised `flag`.
     * `rate(dimension, per: window)` - requests the policy saw in the sliding

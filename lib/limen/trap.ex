@@ -230,6 +230,8 @@ defmodule Limen.Trap do
       `Limen.Plug`. Defaults, for a `Plug.Conn`, to the instance that made
       the decision for the request.
     * `:mode` - `:dry_run` or `:enforce`, overriding the instance's mode.
+    * `:facts` - for connect info, facts about the connection, as for
+      `Limen.put_facts/2`. A `Plug.Conn` carries its own.
 
   Returns `{:trapped, decision}` when the submission must not be acted on
   (never in dry-run mode), and `{:ok, decision}` otherwise.
@@ -271,7 +273,7 @@ defmodule Limen.Trap do
 
   defp context(connect_info, opts) when is_map(connect_info) do
     instance = Instance.fetch!(Instance.name!(opts))
-    {Limen.Socket.context(connect_info, instance), nil}
+    {Limen.Socket.context(connect_info, instance, opts), nil}
   end
 
   defp tells(params, ctx, %{trap: trap, keys: %{trap: keys}}) do

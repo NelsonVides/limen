@@ -17,6 +17,7 @@ defmodule Limen.Gate do
       decision
       | instance: ctx.instance.name,
         enforced: decision.enforced or (decision.mode == :enforce and decision.action != :allow),
+        facts: ctx.facts,
         signals: ctx.signals,
         evidence: ctx.evidence,
         identity: Context.identity(ctx),

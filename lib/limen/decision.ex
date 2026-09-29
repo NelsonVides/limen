@@ -4,8 +4,9 @@ defmodule Limen.Decision do
 
   Every request Limen evaluates produces exactly one decision. It carries the
   action, whether the action was enforced, the stage that produced it, every
-  rule that matched together with the values it observed, and every signal
-  collected for the request. `explain/1` renders it for humans.
+  rule that matched together with the values it observed, the facts the
+  application stated about the request (see `Limen.put_facts/2`), and every
+  signal collected for it. `explain/1` renders it for humans.
 
   ## Actions
 
@@ -51,6 +52,7 @@ defmodule Limen.Decision do
           score: integer(),
           matches: [Match.t()],
           clause: String.t() | nil,
+          facts: map(),
           signals: map(),
           evidence: map(),
           identity: map(),
@@ -72,6 +74,7 @@ defmodule Limen.Decision do
             score: 0,
             matches: [],
             clause: nil,
+            facts: %{},
             signals: %{},
             evidence: %{},
             identity: %{},
@@ -144,6 +147,7 @@ defmodule Limen.Decision do
     lines =
       [explain_header(decision)] ++
         explain_identity(decision) ++
+        explain_facts(decision) ++
         Enum.map(decision.matches, &explain_match/1) ++
         explain_clause(decision) ++
         explain_signals(decision) ++
@@ -171,6 +175,10 @@ defmodule Limen.Decision do
     for {key, value} <- decision.identity, value != nil do
       "  #{key}: #{format_value(key, value)}"
     end
+  end
+
+  defp explain_facts(decision) do
+    for {key, value} <- Enum.sort(decision.facts), do: "  fact #{key} = #{inspect(value)}"
   end
 
   defp explain_match(%Match{} = match) do
