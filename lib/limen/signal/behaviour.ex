@@ -97,14 +97,15 @@ defmodule Limen.Signal.Behaviour do
         Window.read(instance, :minute, key(prefix), 5, now)
       end)
 
-    ctx
-    |> Context.put_signal(:requests_per_minute, requests)
-    |> Context.put_signal(:pages_per_minute, pages)
-    |> Context.put_signal(:assets_per_minute, assets)
-    |> Context.put_signal(:asset_ratio, if(pages > 0, do: ratio(assets, pages)))
-    |> Context.put_signal(:not_found_ratio, ratio(not_found, requests))
-    |> Context.put_signal(:distinct_paths_per_minute, paths)
-    |> Context.put_signal(:active_prefixes, State.active_prefixes(instance))
+    Context.put_signals(ctx, %{
+      requests_per_minute: requests,
+      pages_per_minute: pages,
+      assets_per_minute: assets,
+      asset_ratio: if(pages > 0, do: ratio(assets, pages)),
+      not_found_ratio: ratio(not_found, requests),
+      distinct_paths_per_minute: paths,
+      active_prefixes: State.active_prefixes(instance)
+    })
   end
 
   @doc """

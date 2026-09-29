@@ -13,7 +13,7 @@ defmodule Limen.Owner do
 
   alias Limen.Challenge.Replay
   alias Limen.{DecisionLog, Instance, Lists, State, Stats, Tarpit}
-  alias Limen.Signal.UserAgent
+  alias Limen.Signal.{HttpShape, UserAgent}
 
   require Logger
 
@@ -29,6 +29,7 @@ defmodule Limen.Owner do
       {:stop, {:already_started, name}}
     else
       UserAgent.setup()
+      HttpShape.setup()
 
       Instance.publish(%Instance{
         name: name,

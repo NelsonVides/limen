@@ -122,6 +122,17 @@ defmodule Limen.Context do
   end
 
   @doc """
+  Stores several signal values at once, with evidence for some of them.
+
+  Equivalent to calling `put_signal/4` for each value, in one update of the
+  context.
+  """
+  @spec put_signals(t(), map(), map()) :: t()
+  def put_signals(%__MODULE__{signals: signals, evidence: evidence} = ctx, values, why \\ %{}) do
+    %{ctx | signals: Map.merge(signals, values), evidence: Map.merge(evidence, why)}
+  end
+
+  @doc """
   The identity of the client, as recorded in decisions and bound into tokens.
   """
   @spec identity(t()) :: map()

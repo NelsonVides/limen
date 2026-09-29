@@ -113,16 +113,15 @@ defmodule Limen.Signal.Asn do
   def collect(%Context{instance: instance, client_ip: ip} = ctx) do
     case lookup(instance.name, ip) do
       nil ->
-        ctx
-        |> Context.put_signal(:asn, nil)
-        |> Context.put_signal(:asn_kind, :unknown)
+        Context.put_signals(ctx, %{asn: nil, asn_kind: :unknown})
 
       %{asn: asn, country: country, name: name} ->
-        ctx
-        |> Context.put_signal(:asn, asn)
-        |> Context.put_signal(:asn_kind, kind(asn, instance.config))
-        |> Context.put_signal(:asn_country, country)
-        |> Context.put_signal(:asn_name, name)
+        Context.put_signals(ctx, %{
+          asn: asn,
+          asn_kind: kind(asn, instance.config),
+          asn_country: country,
+          asn_name: name
+        })
     end
   end
 
