@@ -189,6 +189,10 @@ defmodule Limen.Config do
       * `:max_concurrent` - requests held at once. Defaults to `1_000`.
       * `:max_delay` - longest delay in milliseconds. Defaults to `30_000`.
 
+    * `:params` - values of policy parameters, overriding the defaults
+      policies declare, as a keyword list; see "Parameters" in
+      `Limen.Policy`. Defaults to `[]`.
+
     * `:lists` - named lists loaded at startup, see `Limen.Lists`: a list of
       values, `{:cidr, ranges}` or `{:substrings, strings}` per name.
 
@@ -346,6 +350,7 @@ defmodule Limen.Config do
     trap: Map.put(@trap_defaults, :routes, []),
     maze: @maze_defaults,
     lists: [],
+    params: %{},
     cluster: @cluster_defaults,
     ipv4_prefix: 32,
     ipv6_prefix: 64,
@@ -565,6 +570,12 @@ defmodule Limen.Config do
       pattern = if searched != [], do: :binary.compile_pattern(searched)
       {:ok, %{markers: markers, pattern: pattern}}
     end
+  end
+
+  defp validate(:params, params, _config) when is_list(params) do
+    if Keyword.keyword?(params),
+      do: {:ok, Map.new(params)},
+      else: {:error, "expected a keyword list of parameter names and values"}
   end
 
   defp validate(:lists, lists, _config) when is_list(lists) do

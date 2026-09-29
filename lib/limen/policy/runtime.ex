@@ -26,6 +26,31 @@ defmodule Limen.Policy.Runtime do
   def rate(%Context{rates: rates}, dimension, window), do: Map.get(rates, {dimension, window}, 0)
 
   @doc """
+  The value of parameter `name` in the instance's `:params`, or `default`.
+  """
+  @spec param(Context.t(), atom(), term()) :: term()
+  def param(%Context{instance: %{config: %{params: params}}}, name, default) do
+    case params do
+      %{^name => value} -> value
+      _default -> default
+    end
+  end
+
+  def param(%Context{}, _name, default), do: default
+
+  @doc """
+  A score weight from parameter `name`: its configured value when it is an
+  integer, else `default`.
+  """
+  @spec weight(Context.t(), atom(), integer()) :: integer()
+  def weight(ctx, name, default) do
+    case param(ctx, name, default) do
+      weight when is_integer(weight) -> weight
+      _invalid -> default
+    end
+  end
+
+  @doc """
   Maps a score to a proof-of-work difficulty in leading zero bits.
 
   Scores up to `:from` get `:base` bits; every `:step` points above that add

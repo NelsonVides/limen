@@ -190,6 +190,12 @@ of 50, denies at 150 and never bans. `Limen.Policy.describe/1` prints its
 rules. To change it, copy it into your application and edit the weights and
 thresholds; a policy is just a module.
 
+Weights and thresholds you expect to adjust as you learn your traffic can be
+parameters (see `Limen.Policy`): declared with defaults in the policy, set
+per instance with the `:params` option, and changed at runtime with
+`Limen.update_config/3`, without a deploy. Every value a decision used is
+recorded in it.
+
 ## Decision log sampling
 
 `decision_log: [sample_rate: 0.0, non_allow_sample_rate: 1.0]` logs every

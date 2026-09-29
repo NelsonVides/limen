@@ -370,6 +370,7 @@ defmodule Limen.Plug do
       score: result.score,
       matches: result.matches,
       clause: result.clause,
+      clause_observed: result.clause_observed,
       errors: result.errors
     }
 

@@ -4,7 +4,8 @@ defmodule Limen.Decision do
 
   Every request Limen evaluates produces exactly one decision. It carries the
   action, whether the action was enforced, the stage that produced it, every
-  rule that matched together with the values it observed, the facts the
+  rule that matched together with the values it observed, the `decide`
+  clause that picked the action with the values it observed, the facts the
   application stated about the request (see `Limen.put_facts/2`), and every
   signal collected for it. `explain/1` renders it for humans.
 
@@ -53,6 +54,7 @@ defmodule Limen.Decision do
           score: integer(),
           matches: [Match.t()],
           clause: String.t() | nil,
+          clause_observed: [{String.t(), term()}],
           facts: map(),
           signals: map(),
           evidence: map(),
@@ -75,6 +77,7 @@ defmodule Limen.Decision do
             score: 0,
             matches: [],
             clause: nil,
+            clause_observed: [],
             facts: %{},
             signals: %{},
             evidence: %{},
@@ -184,7 +187,7 @@ defmodule Limen.Decision do
   end
 
   defp explain_match(%Match{} = match) do
-    weight = if match.kind == :score, do: " +#{match.weight}", else: ""
+    weight = if match.kind == :score, do: " #{format_weight(match.weight)}", else: ""
     condition = if match.condition, do: " when #{match.condition}", else: ""
     "  #{match.kind} #{match.name}#{weight}#{condition}#{format_observed(match.observed)}"
   end
@@ -196,7 +199,12 @@ defmodule Limen.Decision do
   end
 
   defp explain_clause(%{clause: nil}), do: []
-  defp explain_clause(%{clause: clause}), do: ["  decided by: #{clause}"]
+
+  defp explain_clause(%{clause: clause, clause_observed: observed}),
+    do: ["  decided by: #{clause}#{format_observed(observed)}"]
+
+  defp format_weight(weight) when weight >= 0, do: "+#{weight}"
+  defp format_weight(weight), do: "#{weight}"
 
   defp explain_signals(decision) do
     for {key, value} <- Enum.sort(decision.signals) do

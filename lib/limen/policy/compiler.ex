@@ -89,6 +89,25 @@ defmodule Limen.Policy.Compiler do
     {call, observe(%{info | signals: MapSet.put(info.signals, key)}, node)}
   end
 
+  defp expand_node({:param, _meta, [name]} = node, info, ctx, _provided, env) do
+    unless is_atom(name) do
+      raise_compile(env, node, "param/1 expects an atom literal, got: #{Macro.to_string(name)}")
+    end
+
+    params = Module.get_attribute(env.module, :limen_param_defaults) || %{}
+
+    case Map.fetch(params, name) do
+      {:ok, default} ->
+        call =
+          quote(do: Runtime.param(unquote(ctx), unquote(name), unquote(Macro.escape(default))))
+
+        {call, observe(info, node)}
+
+      :error ->
+        unknown_param!(name, params, env, line(node, env))
+    end
+  end
+
   defp expand_node({:fact, _meta, [key]} = node, info, ctx, _provided, env) do
     unless is_atom(key) do
       raise_compile(env, node, "fact/1 expects an atom literal, got: #{Macro.to_string(key)}")
@@ -210,17 +229,28 @@ defmodule Limen.Policy.Compiler do
     fallback =
       case List.last(clauses) do
         {:->, _meta, [[true], _result]} -> []
-        _other -> quote(do: (true -> {nil, :allow}))
+        _other -> quote(do: (true -> {nil, [], :allow}))
       end
 
     {{:cond, [], [[do: expanded ++ fallback]]}, sources}
   end
 
+  # The clause that matched returns its source and the value of every
+  # helper it used, as a matching rule records them.
   defp decide_clause({:->, meta, [[condition], result]}, ctx, provided, env) do
-    {expanded_condition, _info} = expand(bind_score(condition), ctx, provided, env)
-    {expanded_result, _info} = expand(bind_score(result), ctx, provided, env)
+    {expanded_condition, condition_info} = expand(bind_score(condition), ctx, provided, env)
+    {expanded_result, result_info} = expand(bind_score(result), ctx, provided, env)
     source = "#{source(condition)} -> #{source(result)}"
-    {{:->, meta, [[expanded_condition], {source, expanded_result}]}, source}
+
+    observed =
+      (condition_info.observed ++ result_info.observed)
+      |> Enum.uniq_by(&elem(&1, 0))
+      |> Enum.map(fn {helper, ast} ->
+        quote(do: {unquote(helper), unquote(expand_observed(ast, ctx, provided, env))})
+      end)
+
+    clause = quote(do: {unquote(source), unquote(observed), unquote(expanded_result)})
+    {{:->, meta, [[expanded_condition], clause]}, source}
   end
 
   defp decide_clause(other, _ctx, _provided, env) do
@@ -242,14 +272,26 @@ defmodule Limen.Policy.Compiler do
     end)
   end
 
+  @doc """
+  Raises the compile error for a parameter the policy does not declare.
+  """
+  @spec unknown_param!(atom(), map(), Macro.Env.t(), non_neg_integer()) :: no_return()
+  def unknown_param!(name, params, env, line) do
+    declared = Enum.map_join(Enum.sort(Map.keys(params)), ", ", &inspect/1)
+
+    raise CompileError,
+      file: env.file,
+      line: line,
+      description:
+        "this policy declares no parameter #{inspect(name)}. Declared: #{declared}. " <>
+          "Add it with its default to `use Limen.Policy, params: [...]`"
+  end
+
   @spec raise_compile(Macro.Env.t(), Macro.t(), String.t()) :: no_return()
   defp raise_compile(env, node, message) do
-    line =
-      case node do
-        {_form, meta, _args} when is_list(meta) -> Keyword.get(meta, :line, env.line)
-        _other -> env.line
-      end
-
-    raise CompileError, file: env.file, line: line, description: message
+    raise CompileError, file: env.file, line: line(node, env), description: message
   end
+
+  defp line({_form, meta, _args}, env) when is_list(meta), do: Keyword.get(meta, :line, env.line)
+  defp line(_node, env), do: env.line
 end

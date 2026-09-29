@@ -86,12 +86,43 @@ defmodule Limen.Policy do
   `signal(:asset_ratio) > 0.8` does not hold for a client that has fetched no
   pages yet.
 
+    * `param(name)` - a tunable parameter, see "Parameters" below.
+
   In `decide`, `score` is the total score and `difficulty_for(score)` (or
   `difficulty_for(score, opts)`, see `Limen.Policy.Runtime.difficulty_for/2`)
   maps it to a challenge difficulty. Actions are those of `Limen.Decision`,
   with options: `:deny`, `{:deny, ban: 600}`, `{:challenge, difficulty: 18}`,
   `{:throttle, retry_after: 30}`, `{:tarpit, delay: 5_000}`, `:maze`,
   `{:maze, ban: 86_400}`.
+
+  ## Parameters
+
+  Weights and thresholds are code, but tuning them should not need a
+  deploy. Declare parameters with their defaults, and use `param(name)` in
+  conditions, as a `score` weight, and in `decide`:
+
+      use Limen.Policy, params: [hosting_weight: 25, challenge_at: 40]
+
+      score :hosting_asn, param(:hosting_weight), when: signal(:asn_kind) == :hosting
+
+      decide do
+        score >= param(:challenge_at) -> {:challenge, difficulty: difficulty_for(score)}
+        true -> :allow
+      end
+
+  An instance's `:params` option (see `Limen.Config`) overrides the
+  defaults, at startup or at runtime with `Limen.update_config/3`:
+
+      config :my_app, Limen, params: [challenge_at: 50]
+
+  Parameters are named per instance: policies of the same instance that
+  declare the same name share its configured value. Reading one costs a
+  map lookup in the instance's configuration. Every value used is recorded:
+  in a rule's observed values (`param(:hosting_weight) = 25`, and its weight
+  in the match), and in the decision's `clause_observed` for `decide`. A
+  weight whose configured value is not an integer falls back to its
+  default. Using a parameter the policy does not declare is a compile
+  error.
 
   ## Options
 
@@ -101,6 +132,8 @@ defmodule Limen.Policy do
       value the policy refers to are collected.
     * `:mode` - `:dry_run` or `:enforce` for routes using this policy, unless
       the route itself sets a mode. Defaults to the global mode.
+    * `:params` - the policy's parameters and their defaults, see
+      "Parameters".
 
   ## Explanations
 
@@ -126,6 +159,7 @@ defmodule Limen.Policy do
           score: integer(),
           matches: [Match.t()],
           clause: String.t() | nil,
+          clause_observed: [{String.t(), term()}],
           errors: [term()]
         }
 
@@ -175,12 +209,20 @@ defmodule Limen.Policy do
         weight -> weight
       end
 
-    unless is_integer(weight) do
-      raise CompileError,
-        file: __CALLER__.file,
-        line: __CALLER__.line,
-        description: "score #{inspect(name)} expects an integer weight"
-    end
+    weight =
+      case weight do
+        weight when is_integer(weight) ->
+          weight
+
+        {:param, _meta, [param]} when is_atom(param) ->
+          {:param, param}
+
+        _other ->
+          raise CompileError,
+            file: __CALLER__.file,
+            line: __CALLER__.line,
+            description: "score #{inspect(name)} expects an integer weight or param(:name)"
+      end
 
     rule(:score, name, weight, opts, __CALLER__)
   end
@@ -260,6 +302,8 @@ defmodule Limen.Policy do
   @doc false
   defmacro __before_compile__(env) do
     %{opts: opts, rules: rules, limits: limits, decide: decide} = definitions(env)
+    params = params!(opts, rules, env)
+    Module.put_attribute(env.module, :limen_param_defaults, params)
     signals = signal_modules(opts, env)
     scope = scope(signals, env)
     compiled = Enum.map(rules, &compile_rule(&1, scope))
@@ -268,7 +312,7 @@ defmodule Limen.Policy do
     metadata =
       %{rules: Enum.map(compiled, & &1.meta)}
       |> Map.merge(references(compiled, decide, signals, scope))
-      |> Map.merge(%{limits: limits, mode: Keyword.get(opts, :mode), clauses: clauses})
+      |> Map.merge(%{limits: limits, mode: opts[:mode], clauses: clauses, params: params})
 
     [metadata_function(metadata) | functions(compiled, decide_ast, scope)]
   end
@@ -387,7 +431,7 @@ defmodule Limen.Policy do
         score = 0
         matches = []
         unquote_splicing(Enum.map(scored, &score_rule(&1.meta, ctx)))
-        {clause, result} = __decide__(score, unquote(ctx))
+        {clause, clause_observed, result} = __decide__(score, unquote(ctx))
         {action, params} = Limen.Decision.normalize(result)
 
         %{
@@ -397,6 +441,7 @@ defmodule Limen.Policy do
           score: score,
           matches: :lists.reverse(matches),
           clause: clause,
+          clause_observed: clause_observed,
           errors: errors
         }
       end
@@ -432,6 +477,7 @@ defmodule Limen.Policy do
             score: 0,
             matches: [__match__(unquote(name), unquote(ctx))],
             clause: nil,
+            clause_observed: [],
             errors: errors
           }
 
@@ -447,13 +493,26 @@ defmodule Limen.Policy do
     end
   end
 
-  # Every score rule that matches adds its weight.
+  # Every score rule that matches adds its weight. A weight taken from a
+  # parameter is the one its match recorded.
   defp score_rule(%{name: name, weight: weight}, ctx) do
+    add =
+      if is_integer(weight) do
+        quote do
+          {score + unquote(weight), [__match__(unquote(name), unquote(ctx)) | matches], errors}
+        end
+      else
+        quote do
+          %Limen.Decision.Match{weight: weight} = match = __match__(unquote(name), unquote(ctx))
+          {score + weight, [match | matches], errors}
+        end
+      end
+
     quote do
       {score, matches, errors} =
         case __rule__(unquote(name), unquote(ctx)) do
           true ->
-            {score + unquote(weight), [__match__(unquote(name), unquote(ctx)) | matches], errors}
+            unquote(add)
 
           false ->
             {score, matches, errors}
@@ -488,7 +547,8 @@ defmodule Limen.Policy do
       weight: weight,
       condition: Compiler.source(condition),
       line: line,
-      opts: Map.new(extra)
+      opts: Map.new(extra),
+      params: Module.get_attribute(scope.env.module, :limen_param_defaults)
     }
 
     %{
@@ -532,9 +592,23 @@ defmodule Limen.Policy do
     values =
       Enum.map(observed, fn {source, ast} -> quote(do: {unquote(source), unquote(ast)}) end)
 
+    # A weight taken from a parameter is observed like the condition's values.
+    {weight, values} =
+      case meta.weight do
+        {:param, name} ->
+          var = Macro.var(:weight, __MODULE__)
+
+          {var,
+           Enum.concat(values, [quote(do: {unquote("param(#{inspect(name)})"), unquote(var)})])}
+
+        weight ->
+          {weight, values}
+      end
+
     quote do
       defp __match__(unquote(meta.name), unquote(ctx)) do
         _bound = unquote(ctx)
+        unquote(weight_binding(meta, ctx))
 
         observed =
           try do
@@ -546,13 +620,24 @@ defmodule Limen.Policy do
         %Limen.Decision.Match{
           name: unquote(meta.name),
           kind: unquote(meta.kind),
-          weight: unquote(meta.weight),
+          weight: unquote(weight),
           condition: unquote(meta.condition),
           observed: observed
         }
       end
     end
   end
+
+  defp weight_binding(%{weight: {:param, name}, params: params}, ctx) do
+    default = Macro.escape(Map.fetch!(params, name))
+
+    quote do
+      unquote(Macro.var(:weight, __MODULE__)) =
+        Runtime.weight(unquote(ctx), unquote(name), unquote(default))
+    end
+  end
+
+  defp weight_binding(_meta, _ctx), do: nil
 
   defp default_decide do
     quote do
@@ -589,6 +674,41 @@ defmodule Limen.Policy do
 
       module
     end
+  end
+
+  # Parameters are declared with their defaults, and weights taken from one
+  # must default to an integer.
+  defp params!(opts, rules, env) do
+    params = Keyword.get(opts, :params, [])
+
+    unless Keyword.keyword?(params) do
+      raise CompileError,
+        file: env.file,
+        line: env.line,
+        description: "params expects a keyword list of names and default values"
+    end
+
+    params = Map.new(params)
+
+    for {_kind, name, {:param, param}, _condition, line, _extra} <- rules do
+      case Map.fetch(params, param) do
+        {:ok, default} when is_integer(default) ->
+          :ok
+
+        {:ok, default} ->
+          raise CompileError,
+            file: env.file,
+            line: line,
+            description:
+              "score #{inspect(name)} takes its weight from param(#{inspect(param)}), " <>
+                "whose default must be an integer, got: #{inspect(default)}"
+
+        :error ->
+          Compiler.unknown_param!(param, params, env, line)
+      end
+    end
+
+    params
   end
 
   defp validate_names!(rules, limits, env) do
@@ -631,6 +751,11 @@ defmodule Limen.Policy do
     signals = Enum.map_join(policy.__limen__(:signals), ", ", &inspect/1)
     mode = if policy.__limen__(:mode), do: ", mode: #{policy.__limen__(:mode)}", else: ""
 
+    params =
+      for {name, default} <- Enum.sort(policy.__limen__(:params)) do
+        "  param #{name}, default #{inspect(default)}"
+      end
+
     limits =
       for limit <- policy.__limen__(:limits) do
         "  limit #{limit.name}: #{limit.condition}"
@@ -647,11 +772,12 @@ defmodule Limen.Policy do
 
     Enum.join(
       ["#{inspect(policy)} (signals: #{signals}#{mode})"] ++
-        limits ++ rules ++ ["  decide:"] ++ clauses,
+        params ++ limits ++ rules ++ ["  decide:"] ++ clauses,
       "\n"
     )
   end
 
+  defp format_weight({:param, name}), do: "param(#{inspect(name)})"
   defp format_weight(weight) when weight >= 0, do: "+#{weight}"
   defp format_weight(weight), do: "#{weight}"
 end
