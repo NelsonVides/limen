@@ -94,6 +94,37 @@ defmodule Limen.State.GcraTest do
     assert :ets.info(instance.state.gcra.table, :size) == 10
   end
 
+  @tag config: [state: [gcra_max_keys: 1_000]]
+  test "sweeping while the table fills keeps it within its cap", %{instance: instance} do
+    # Keys arrive at time 0 and sweeps look at time 0, so none are swept, but
+    # every sweep races the inserts.
+    inserters = 8
+    sweeper = Task.async(fn -> sweep_until_stopped(instance) end)
+
+    1..inserters
+    |> Enum.map(fn inserter ->
+      Task.async(fn ->
+        for n <- 1..5_000, do: Gcra.check(instance, {inserter, n}, 1, 1_000, 0, 0)
+      end)
+    end)
+    |> Task.await_many(30_000)
+
+    send(sweeper.pid, :stop)
+    Task.await(sweeper)
+
+    assert :ets.info(instance.state.gcra.table, :size) <= 1_000 + inserters
+  end
+
+  defp sweep_until_stopped(instance) do
+    receive do
+      :stop -> :ok
+    after
+      0 ->
+        Gcra.sweep(instance, 0)
+        sweep_until_stopped(instance)
+    end
+  end
+
   test "reset forgets a key", %{instance: instance} do
     Gcra.check(instance, :k, 1, 1_000, 0, 0)
     assert {:error, _ms} = Gcra.check(instance, :k, 1, 1_000, 0, 0)

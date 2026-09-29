@@ -154,7 +154,10 @@ defmodule Limen.State.Window do
     # Matches entries of any width by the epoch in their key.
     older = [{:"$1", [{:<, {:element, 2, {:element, 1, :"$1"}}, epoch}], [true]}]
     cleared = :ets.select_delete(table, older)
-    :atomics.put(counts, slot + 1, :ets.info(table, :size))
+    # Every key inserted adds one to the count, so subtracting what was
+    # cleared keeps it exact. Setting it to the table's size instead would
+    # lose the keys inserted meanwhile, and let the slot outgrow its cap.
+    :atomics.sub(counts, slot + 1, cleared)
     CountMin.reset(elem(sketches, slot))
     cleared
   end

@@ -133,6 +133,37 @@ defmodule Limen.State.WindowTest do
   end
 
   @tag config: [state: [max_keys: 1_000]]
+  test "rotating a slot while it fills keeps it within its cap", %{instance: instance} do
+    # Epoch 1's slot is the one rotating at epoch 0 clears, of older entries
+    # only: keys of epoch 1 stay, and every rotation races the inserts.
+    inserters = 8
+    rotator = Task.async(fn -> rotate_until_stopped(instance) end)
+
+    1..inserters
+    |> Enum.map(fn inserter ->
+      Task.async(fn ->
+        for n <- 1..5_000, do: Window.incr(instance, :second, {inserter, n}, @t0 + 1_000)
+      end)
+    end)
+    |> Task.await_many(30_000)
+
+    send(rotator.pid, :stop)
+    Task.await(rotator)
+
+    assert :ets.info(State.table(instance, :second, 1), :size) <= 1_000 + inserters
+  end
+
+  defp rotate_until_stopped(instance) do
+    receive do
+      :stop -> :ok
+    after
+      0 ->
+        Window.rotate(instance, :second, @t0)
+        rotate_until_stopped(instance)
+    end
+  end
+
+  @tag config: [state: [max_keys: 1_000]]
   test "memory stays bounded under a flood of unique keys", %{instance: instance} do
     before = State.memory(instance)
 

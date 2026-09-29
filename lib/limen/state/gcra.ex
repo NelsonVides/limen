@@ -122,7 +122,9 @@ defmodule Limen.State.Gcra do
         now \\ System.monotonic_time(:microsecond)
       ) do
     swept = :ets.select_delete(table, [{{:_, :"$1"}, [{:<, :"$1", now}], [true]}])
-    :atomics.put(size, 1, :ets.info(table, :size))
+    # Subtracted, not reset to the table's size, which would lose the keys
+    # inserted meanwhile: every inserted key adds one.
+    :atomics.sub(size, 1, swept)
     swept
   end
 end

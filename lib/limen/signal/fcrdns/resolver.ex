@@ -62,8 +62,10 @@ defmodule Limen.Signal.Fcrdns.Resolver do
     )
     |> Enum.each(&cache(tables.cache, &1, config))
 
-    Enum.each(keys, &:ets.delete(tables.pending, &1))
-    :atomics.put(tables.size, 1, :ets.info(tables.pending, :size))
+    # Subtracted, not reset to the queue's size, which would lose the keys
+    # queued meanwhile: every queued key adds one.
+    removed = Enum.count(keys, &(:ets.take(tables.pending, &1) != []))
+    :atomics.sub(tables.size, 1, removed)
   end
 
   defp verify(name, {ip, crawler} = key, config) do
