@@ -56,6 +56,12 @@ The HTTP shape scenario ran on a request without identity, so its user agent
 was never parsed. It was replaced by `signals: http shape, chrome via proxy`,
 on an identified request, which took 3.3 µs at 0.1.0.
 
+The pass fast path scenario sent the same client on every call, which
+exceeds the default policy's flood limit after 200 requests. Limits are
+checked before passes, so it mostly measured throttled requests. It was
+replaced by `plug: pass holders, chrome via proxy`, in which each of 20,000
+clients holds a pass of its own.
+
 ### M8: honeypots and the maze
 
 Trap paths and ban actions leave the request path unchanged (every scenario

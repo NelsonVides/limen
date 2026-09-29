@@ -136,11 +136,14 @@ defmodule Limen.Bench.Scenarios do
   Returns a function giving the next of a pool of Chrome clients, each from
   its own address. The pool is large enough that none of them hits the
   default policy's flood limit, so every request takes the full path.
+
+  With an instance, each client also sends a pass cookie that instance
+  issued for it.
   """
-  @spec next_client() :: (-> Plug.Conn.t())
-  def next_client do
+  @spec next_client(Limen.Instance.t() | nil) :: (-> Plug.Conn.t())
+  def next_client(instance \\ nil) do
     chrome = chrome()
-    pool = List.to_tuple(for n <- 1..20_000, do: with_client(chrome, n))
+    pool = List.to_tuple(for n <- 1..20_000, do: with_pass(with_client(chrome, n), instance))
     counter = :counters.new(1, [:write_concurrency])
 
     fn ->
@@ -156,21 +159,18 @@ defmodule Limen.Bench.Scenarios do
       Signal.identify(Context.from_conn(chrome, instance), instance.config)
     end
 
-    Map.merge(requests(chrome, identify), components(identify))
+    Map.merge(requests(), components(identify))
   end
 
-  defp requests(chrome, identify) do
+  defp requests do
     opts = Limen.Plug.init(instance: @instance)
     next_client = next_client()
 
-    with_pass = fn instance ->
-      {pass, _ttl} = Pass.issue(identify.(instance))
-      Plug.Conn.put_req_header(chrome, "cookie", "_ga=GA1.1.1; _limen_pass=" <> pass)
-    end
-
+    # Every client holds a pass: one client alone would soon exceed the flood
+    # limit, which is checked before passes, as an earlier scenario did.
     %{
-      "plug: pass fast path, chrome via proxy" =>
-        {fn conn -> Limen.Plug.call(conn, opts) end, @proxied, with_pass},
+      "plug: pass holders, chrome via proxy" =>
+        {fn next -> Limen.Plug.call(next.(), opts) end, @proxied, &next_client/1},
       "plug: dry-run, default policy, chrome via proxy" =>
         {fn _instance -> Limen.Plug.call(next_client.(), opts) end, @proxied}
     }
@@ -277,6 +277,14 @@ defmodule Limen.Bench.Scenarios do
       List.to_tuple(
         for _n <- 1..10_000, do: asn_ip((0x2001 <<< 112) + :rand.uniform(1 <<< 96), 6)
       )
+
+  defp with_pass(conn, nil), do: conn
+
+  defp with_pass(conn, instance) do
+    identity = Signal.identify(Context.from_conn(conn, instance), instance.config)
+    {pass, _ttl} = Pass.issue(identity)
+    Plug.Conn.put_req_header(conn, "cookie", "_ga=GA1.1.1; _limen_pass=" <> pass)
+  end
 
   defp with_client(conn, n) do
     address = "203.0.#{div(n, 256)}.#{rem(n, 256)}"
