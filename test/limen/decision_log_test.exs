@@ -63,7 +63,7 @@ defmodule Limen.DecisionLogTest do
     def write(decisions, opts) do
       case Keyword.fetch!(opts, :test) do
         :raise -> raise "the database is down"
-        pid -> send(pid, {:written, Enum.map(decisions, & &1.path)})
+        pid -> send(pid, {:written, Enum.map(decisions, & &1.path), self()})
       end
     end
   end
@@ -73,15 +73,15 @@ defmodule Limen.DecisionLogTest do
     for n <- 1..3, do: DecisionLog.record(instance(limen), %Decision{path: "/#{n}"})
 
     Flusher.flush(limen)
-    assert_received {:written, ["/1", "/2", "/3"]}
+    assert_received {:written, ["/1", "/2", "/3"], _flusher}
 
     # Nothing sampled, nothing written.
     Flusher.flush(limen)
-    refute_received {:written, _paths}
+    refute_received {:written, _paths, _flusher}
 
     DecisionLog.record(instance(limen), %Decision{path: "/4"})
     Flusher.flush(limen)
-    assert_received {:written, ["/4"]}
+    assert_received {:written, ["/4"], _flusher}
   end
 
   test "a failing sink loses its batch, not the flusher", %{limen: limen} do
@@ -93,7 +93,66 @@ defmodule Limen.DecisionLogTest do
     Limen.update_config(limen, :decision_log, sink: {Sink, test: self()})
     DecisionLog.record(instance(limen), %Decision{path: "/kept"})
     Flusher.flush(limen)
-    assert_received {:written, ["/kept"]}
+    assert_received {:written, ["/kept"], _flusher}
+  end
+
+  describe "inline delivery" do
+    setup %{limen: limen} do
+      Limen.update_config(limen, :decision_log, sink: {Sink, test: self()}, delivery: :inline)
+    end
+
+    test "writes each sampled decision at once, in the process that made it",
+         %{limen: limen} do
+      test = self()
+      DecisionLog.record(instance(limen), %Decision{path: "/now"})
+      assert_received {:written, ["/now"], ^test}
+
+      # The buffer still has it for the dashboard, and the flusher doesn't
+      # write it again.
+      assert [%Decision{path: "/now"} | _older] = DecisionLog.recent(limen, 1)
+      Flusher.flush(limen)
+      refute_received {:written, _paths, _process}
+    end
+
+    test "writes the decisions of requests through the plug", %{limen: limen} do
+      opts = Limen.Plug.init(instance: limen)
+      test = self()
+
+      Plug.Test.conn(:get, "/through-the-plug")
+      |> Limen.Test.put_client_ip(Limen.Test.unique_ip())
+      |> Limen.Plug.call(opts)
+
+      assert_received {:written, ["/through-the-plug"], ^test}
+    end
+
+    test "switching back to batches neither repeats nor loses decisions", %{limen: limen} do
+      DecisionLog.record(instance(limen), %Decision{path: "/inline"})
+      assert_received {:written, ["/inline"], _process}
+
+      Limen.update_config(limen, :decision_log, delivery: :batched)
+      DecisionLog.record(instance(limen), %Decision{path: "/batched"})
+      Flusher.flush(limen)
+      assert_received {:written, ["/batched"], _flusher}
+    end
+
+    test "a failing sink raises in the caller, so its test fails", %{limen: limen} do
+      Limen.update_config(limen, :decision_log, sink: {Sink, test: :raise})
+
+      assert_raise RuntimeError, "the database is down", fn ->
+        DecisionLog.record(instance(limen), %Decision{path: "/broken"})
+      end
+    end
+
+    test "overwritten entries aren't reported as dropped", %{limen: limen} do
+      for n <- 1..20, do: DecisionLog.record(instance(limen), %Decision{path: "/#{n}"})
+      refute capture_log(fn -> Flusher.flush(limen) end) =~ "dropped"
+    end
+  end
+
+  test "delivery is :batched or :inline" do
+    assert_raise ArgumentError, ~r/invalid value for :delivery/, fn ->
+      Limen.Config.build(decision_log: [delivery: :sync])
+    end
   end
 
   test "the Logger sink logs at its level", %{limen: limen} do

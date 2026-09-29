@@ -106,6 +106,49 @@ end
 The request's mode applies to the socket check and to
 `Limen.LiveView.check_form/3` too.
 
+## Decision log sinks
+
+A `Limen.DecisionLog.Sink` normally runs in the instance's flusher process,
+every `:flush_interval` milliseconds. Neither suits a test: the flusher is
+not one of the processes the test's Ecto sandbox allows, so a sink writing
+to your database fails there, and the test would have to wait for a flush
+to see what it wrote.
+
+In `config/test.exs`, deliver decisions inline instead:
+
+```elixir
+config :my_app, Limen,
+  decision_log: [
+    sink: MyApp.DecisionSink,
+    delivery: :inline,
+    sample_rate: 0.0,
+    non_allow_sample_rate: 1.0
+  ]
+```
+
+Each sampled decision then goes to the sink at once, in the process that
+made it: the test's own for requests, the LiveView's for socket and form
+checks, both of which the sandbox allows. Rows are written inside the
+test's transaction, so concurrent tests don't see each other's, and a test
+can assert on them right after the request:
+
+```elixir
+test "challenges are recorded", %{conn: conn} do
+  conn
+  |> Limen.Test.put_client_ip(Limen.Test.unique_ip())
+  |> Limen.Test.put_mode(:enforce)
+  |> get(~p"/")
+
+  assert [%MyApp.BotDecision{action: "challenge"}] = MyApp.Repo.all(MyApp.BotDecision)
+end
+```
+
+Sampling still applies, so sample what the tests assert on (every non-allow
+decision above). A sink that raises raises in the request, so a broken sink
+fails the tests instead of logging quietly, as it would from the flusher.
+Inline delivery puts the sink on the request path: keep it to tests. To test the sink on its own, call its `write/2` with decisions you
+build: `Limen.Decision` is a plain struct.
+
 ## Policies on their own
 
 To test a policy without your application, start an instance just for the

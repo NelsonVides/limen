@@ -56,6 +56,15 @@ defmodule Limen.Config do
       * `:sink` - where flushed decisions go: a `Limen.DecisionLog.Sink`
         module, or `{module, opts}`. Defaults to `Limen.DecisionLog.Logger`,
         which logs them at its `:level` (`:info` by default).
+      * `:delivery` - `:batched` (default): the flusher hands sampled
+        decisions to the sink in batches, away from the request path.
+        `:inline`, **for tests only**: each sampled decision goes to the
+        sink at once, in the process that made it, so a sink writing
+        through an Ecto sandbox sees the test's connection and a test can
+        assert on what it wrote right after the request. A sink that raises
+        raises in that process, failing the test. It puts the sink on the
+        request path, so never use it in production. See "Decision log
+        sinks" in the testing guide.
 
     * `:asn` - IP to ASN data, see `Limen.Signal.Asn`:
       * `:file` - an [iptoasn.com][iptoasn] `ip2asn-combined.tsv` file (optionally
@@ -254,7 +263,8 @@ defmodule Limen.Config do
     non_allow_sample_rate: 1.0,
     size: 1024,
     flush_interval: 1_000,
-    sink: {Limen.DecisionLog.Logger, []}
+    sink: {Limen.DecisionLog.Logger, []},
+    delivery: :batched
   }
 
   @state_defaults %{
@@ -663,6 +673,7 @@ defmodule Limen.Config do
   defp valid_decision_log?(rate, value) when rate in [:sample_rate, :non_allow_sample_rate],
     do: is_number(value) and value >= 0 and value <= 1
 
+  defp valid_decision_log?(:delivery, delivery), do: delivery in [:batched, :inline]
   defp valid_decision_log?(:sink, {module, opts}), do: sink?(module) and Keyword.keyword?(opts)
   defp valid_decision_log?(:sink, module), do: sink?(module)
   defp valid_decision_log?(_size_or_interval, value), do: is_integer(value) and value > 0

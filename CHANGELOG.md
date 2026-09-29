@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- `decision_log: [delivery: :inline]`, for tests: each sampled decision
+  goes to the sink at once, in the process that made it, instead of in
+  batches from the flusher. A sink writing through an Ecto sandbox then
+  sees the test's connection, and tests can assert on what it wrote right
+  after the request, and a sink that raises fails the test instead of
+  logging. It puts the sink on the request path, so it is for tests only; the default, `:batched`, is unchanged. The testing guide
+  has a new "Decision log sinks" section.
+
 ### Fixed
 
 - The formatter settings Limen exports (`import_deps: [:limen]`) now

@@ -12,6 +12,10 @@ defmodule Limen.DecisionLog do
   When the buffer wraps faster than it is drained, the oldest entries are
   overwritten and the flusher logs how many were lost.
 
+  In tests, `delivery: :inline` hands each sampled decision to the sink at
+  once, in the process that made it, instead (see the `:decision_log`
+  options in `Limen.Config`); the buffer still keeps it for `recent/2`.
+
   The same buffer backs `recent/2`, which the LiveDashboard page uses to show
   the latest decisions.
 
@@ -41,17 +45,30 @@ defmodule Limen.DecisionLog do
   rates.
 
   Called on the request path. Costs a random number and, when sampled, one
-  atomic increment and one ETS insert.
+  atomic increment and one ETS insert. With `delivery: :inline` (tests
+  only), a sampled decision is also written to the sink right away, and
+  marked so the flusher does not write it again; an error in the sink is
+  then the caller's, so a broken sink fails the test using it.
   """
   @spec record(Instance.t(), Decision.t()) :: :ok
-  def record(%Instance{config: %{decision_log: log}, log: buffer}, %Decision{} = decision) do
+  def record(
+        %Instance{config: %{decision_log: log}, log: buffer} = instance,
+        %Decision{} = decision
+      ) do
     rate = if decision.action == :allow, do: log.sample_rate, else: log.non_allow_sample_rate
 
     if rate > 0 and (rate >= 1 or :rand.uniform() < rate) do
+      inline? = log.delivery == :inline
       seq = :atomics.add_get(buffer.cursor, 1, 1)
-      :ets.insert(buffer.table, {rem(seq, log.size), seq, decision})
+      :ets.insert(buffer.table, {rem(seq, log.size), seq, decision, inline?})
+      if inline?, do: write_inline(instance, decision)
     end
 
+    :ok
+  end
+
+  defp write_inline(%Instance{config: %{decision_log: %{sink: {sink, opts}}}}, decision) do
+    _result = sink.write([decision], opts)
     :ok
   end
 
@@ -63,7 +80,10 @@ defmodule Limen.DecisionLog do
     %Instance{config: %{decision_log: %{size: size}}, log: buffer} = Instance.fetch!(instance)
     last = :atomics.get(buffer.cursor, 1)
     first = max(last - min(limit, size) + 1, 1)
-    if last < first, do: [], else: collect(buffer, last..first//-1, size)
+
+    if last < first,
+      do: [],
+      else: for({decision, _delivered?} <- collect(buffer, last..first//-1, size), do: decision)
   end
 
   @doc """
@@ -96,19 +116,22 @@ defmodule Limen.DecisionLog do
   end
 
   @doc false
+  # The decisions sampled after `flushed` that still need writing (those
+  # delivered inline are skipped), how many were overwritten before they
+  # could be, and the sequence number to resume from.
   @spec since(Instance.t(), non_neg_integer()) ::
           {[Decision.t()], dropped :: non_neg_integer(), last :: non_neg_integer()}
   def since(%Instance{config: %{decision_log: %{size: size}}, log: buffer}, flushed) do
     last = :atomics.get(buffer.cursor, 1)
     first = max(flushed + 1, last - size + 1)
     entries = if last >= first, do: Enum.reverse(collect(buffer, last..first//-1, size)), else: []
-    {entries, first - flushed - 1, last}
+    {for({decision, false} <- entries, do: decision), first - flushed - 1, last}
   end
 
   defp collect(%{table: table}, range, size) do
     Enum.flat_map(range, fn seq ->
       case :ets.lookup(table, rem(seq, size)) do
-        [{_slot, ^seq, decision}] -> [decision]
+        [{_slot, ^seq, decision, delivered?}] -> [{decision, delivered?}]
         _overwritten -> []
       end
     end)

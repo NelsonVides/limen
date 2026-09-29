@@ -28,6 +28,16 @@ defmodule Limen.DecisionLog.Sink do
   A sink that raises or exits loses that batch: the error is logged and the
   next flush goes on with the decisions sampled after it. The default sink,
   `Limen.DecisionLog.Logger`, writes each decision as a `Logger` report.
+
+  ## In tests
+
+  The flusher's process is not one a test's Ecto sandbox allows, and its
+  batches arrive after the test has moved on. With `delivery: :inline` in the
+  test configuration, each sampled decision goes to the sink at once, in the
+  process that made it, as a batch of one, and an error in the sink raises
+  there instead of being logged; see "Decision log sinks" in the testing
+  guide. Never use it in production: it puts the sink on the request
+  path.
   """
 
   @doc """

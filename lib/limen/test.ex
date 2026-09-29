@@ -43,6 +43,14 @@ defmodule Limen.Test do
 
       {:ok, view, _html} = live(conn, ~p"/signup")
 
+  ## Decision log sinks
+
+  A `Limen.DecisionLog.Sink` normally runs in a background process, which a
+  test's Ecto sandbox doesn't allow. Configure the test instance with
+  `decision_log: [delivery: :inline]` to hand each sampled decision to the
+  sink in the process that made it, so what it writes is in the test's
+  transaction as soon as the request returns. See the testing guide.
+
   ## Isolated instances
 
   To test a policy on its own, start an instance of your own for the test,

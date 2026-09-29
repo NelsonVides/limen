@@ -50,7 +50,8 @@ defmodule Limen.DecisionLog.Flusher do
   defp drain(instance, %{flushed: flushed} = state) do
     {entries, dropped, last} = DecisionLog.since(instance, flushed)
 
-    if dropped > 0 do
+    # Delivered inline, overwritten entries were written all the same.
+    if dropped > 0 and instance.config.decision_log.delivery == :batched do
       Logger.warning(
         "Limen decision log of #{inspect(instance.name)} overflowed, #{dropped} entries dropped"
       )
