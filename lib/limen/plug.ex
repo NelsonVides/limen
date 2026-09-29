@@ -54,13 +54,45 @@ defmodule Limen.Plug do
   time in an endpoint); at runtime the plug reads it with a single
   `:persistent_term` lookup per request.
 
+  ## In the router
+
+  In the endpoint, the plug sees every request but not your application's
+  session, so its policies cannot tell signed-in users apart. To gate with
+  facts about the user (see `Limen.put_facts/2`), put the plug in a router
+  pipeline, after whatever states the facts:
+
+      # router.ex
+      pipeline :browser do
+        plug :accepts, ["html"]
+        plug :fetch_session
+        plug :limen_facts
+        plug Limen.Plug, otp_app: :my_app, policy: MyApp.BotPolicy
+        ...
+      end
+
+      defp limen_facts(conn, _opts),
+        do: Limen.put_facts(conn, signed_in: get_session(conn, :user_token) != nil)
+
+  The router only runs a pipeline for paths it has a route for, so Limen's
+  own endpoints and trap paths never reach that plug. Keep one in the
+  endpoint, with `policy: :off`, to serve them and nothing else:
+
+      # endpoint.ex, before the router
+      plug Limen.Plug, otp_app: :my_app, policy: :off
+
+  Requests that no gated pipeline handles (static files, APIs) are then
+  not evaluated at all; give them a pipeline of their own, or gate them in
+  the endpoint with `:routes`.
+
   ## Options
 
     * `:instance` - the name of the `Limen` instance to use.
     * `:otp_app` - use the instance named after this application, as started
       by `{Limen, otp_app: app}`. One of `:instance` or `:otp_app` is required.
-    * `:policy` - the policy module for requests no route matches. Defaults
-      to `Limen.Policy.Default`.
+    * `:policy` - the policy module for requests no route matches, or `:off`
+      or `:track` to treat them like routes with those targets (below).
+      Defaults to `Limen.Policy.Default`. Limen's endpoints and trap paths
+      are served whatever the policy.
     * `:mode` - `:dry_run` or `:enforce`, overriding the policy's and the
       instance's mode.
     * `:routes` - per-path overrides, as `{path, target}` or
@@ -96,15 +128,22 @@ defmodule Limen.Plug do
     instance = Instance.name!(opts)
     policy = Keyword.get(opts, :policy, Limen.Policy.Default)
     mode = Keyword.get(opts, :mode)
-    validate_policy!(policy)
     validate_mode!(mode)
+
+    default =
+      if policy in [:off, :track] do
+        policy
+      else
+        validate_policy!(policy)
+        {policy, mode, instance}
+      end
 
     # The most specific route first; the catch-all default last.
     routes =
       opts
       |> Keyword.get(:routes, [])
       |> Enum.map(&route(&1, instance))
-      |> then(&[{[], nil, {policy, mode, instance}} | &1])
+      |> then(&[{[], nil, default} | &1])
       |> Enum.sort_by(fn {segments, path, _target} -> {-length(segments), is_nil(path)} end)
 
     instances = Enum.uniq(for {_segments, _path, {_policy, _mode, name}} <- routes, do: name)

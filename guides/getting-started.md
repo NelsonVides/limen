@@ -110,6 +110,51 @@ Limen serves its challenge endpoints under `/__limen`. If a
 run) applies to your whole site, the challenge page sets its own; it loads
 nothing from other origins.
 
+## Leave your users alone
+
+Limen judges requests: a signed-in customer on a shared address looks like
+anyone else on it. Your application knows better, and can say so with
+*facts*, which policies read with `fact/1`. A `trust` rule allows the
+clients you vouch for before anything else, bans and limits included, and
+every such request still gets a decision that says why:
+
+```elixir
+defmodule MyApp.BotPolicy do
+  use Limen.Policy
+
+  trust :signed_in, when: fact(:signed_in)
+  # ... the rest of the policy
+end
+```
+
+Facts about the user need the session, which the endpoint has not fetched
+yet, so gate in the router instead, after stating them, and keep a plug in
+the endpoint that only serves Limen's own endpoints and trap paths (the
+router never sees those):
+
+```elixir
+# endpoint.ex, before the router
+plug Limen.Plug, otp_app: :my_app, policy: :off
+
+# router.ex
+pipeline :browser do
+  plug :accepts, ["html"]
+  plug :fetch_session
+  plug :limen_facts
+  plug Limen.Plug, otp_app: :my_app, policy: MyApp.BotPolicy
+  # ...
+end
+
+defp limen_facts(conn, _opts) do
+  Limen.put_facts(conn, signed_in: get_session(conn, :user_token) != nil)
+end
+```
+
+State facts from what your application verified, never from what the
+client sent: a trusted client skips everything. Requests that go through no
+gated pipeline, such as static files, are then not evaluated; see
+`Limen.Plug` for the details.
+
 ## Watch decisions
 
 Every evaluated request emits a `[:limen, :decision]` telemetry event whose
@@ -168,6 +213,23 @@ end
 
 For plain channel sockets, call `Limen.Socket.check/3` from `connect/3`.
 Tokens are checked by the instance that issued them.
+
+With trust rules, give the hook your policy and state the same facts for
+the socket in a hook that runs before it, so that trusted clients connect
+as they browse:
+
+```elixir
+live_session :default,
+  on_mount: [MyAppWeb.LimenFacts, {Limen.LiveView, otp_app: :my_app, policy: MyApp.BotPolicy}] do
+  ...
+end
+
+defmodule MyAppWeb.LimenFacts do
+  def on_mount(:default, _params, session, socket) do
+    {:cont, Limen.LiveView.put_facts(socket, signed_in: session["user_token"] != nil)}
+  end
+end
+```
 
 ## Add the dashboard page
 

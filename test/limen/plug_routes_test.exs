@@ -22,6 +22,26 @@ defmodule Limen.PlugRoutesTest do
     refute Map.has_key?(conn.private, :before_send)
   end
 
+  @tag config: [trap: [paths: ["/archive"]], maze: [delay: {0, 0}], mode: :enforce]
+  test "policy: :off serves Limen's endpoints and traps, and nothing else", %{limen: limen} do
+    opts = Limen.Plug.init(instance: limen, policy: :off)
+
+    page = Limen.Plug.call(conn(:get, "/articles"), opts)
+    refute page.halted
+    assert Limen.decision(page) == nil
+
+    solver = Limen.Plug.call(conn(:get, "/__limen/solver.js"), opts)
+    assert solver.halted and solver.status == 200
+
+    trap = Limen.Plug.call(conn(:get, "/archive/x"), opts)
+    assert %Decision{stage: :trap, action: :maze, enforced: true} = Limen.decision(trap)
+
+    tracked =
+      Limen.Plug.call(conn(:get, "/articles"), Limen.Plug.init(instance: limen, policy: :track))
+
+    assert %Decision{stage: :ban} = Limen.decision(tracked)
+  end
+
   test ":track routes count behaviour and enforce bans only", %{limen: limen} do
     conn = call(limen, "/assets/app.css")
     assert Limen.decision(conn) == nil
