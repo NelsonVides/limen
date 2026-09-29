@@ -27,14 +27,16 @@ defmodule Limen.Policy do
 
   ## Evaluation
 
-    1. `limit` rules are checked first, for every request the policy covers,
+    1. `trust` rules are checked before anything else, bans included: the
+       first that matches allows the request at the `:trust` stage.
+    2. `limit` rules are checked next, for every request the policy covers,
        including clients holding a valid pass. The first exceeded limit
        throttles the request.
-    2. `allow`, `deny` and `maze` rules are checked in the order they are
+    3. `allow`, `deny` and `maze` rules are checked in the order they are
        written; the first that matches settles the request.
-    3. Every `score` rule that matches adds its weight (which may be negative)
+    4. Every `score` rule that matches adds its weight (which may be negative)
        to the score.
-    4. The first `decide` clause whose condition holds picks the action. With
+    5. The first `decide` clause whose condition holds picks the action. With
        no `decide` block, requests scoring 60 or more are challenged.
 
   A rule whose condition raises does not match; the error is recorded in the
@@ -42,6 +44,14 @@ defmodule Limen.Policy do
 
   ## Rules
 
+    * `trust name, when: condition` - allow and skip everything else: bans,
+      limits, passes and every other rule. For clients the application
+      vouches for, such as signed-in users (see `Limen.put_facts/2`); the
+      socket checks of `Limen.Socket` and `Limen.LiveView` honour them too,
+      given the policy. Trust rules run before any signal is collected, so
+      their conditions can only use facts, the client identity
+      (`signal(:client_ip)`, `:prefix`, `:ja4` and `:user_agent`), headers,
+      lists and request fields.
     * `limit name, key: dimension, rate: n, per: window, burst: b` - a hard
       GCRA limit (see `Limen.State.Gcra`) of `n` requests per window
       (`:second`, `:minute`, `:hour` or milliseconds) per `dimension`,
@@ -122,7 +132,9 @@ defmodule Limen.Policy do
   @doc false
   defmacro __using__(opts) do
     quote do
-      import Limen.Policy, only: [allow: 2, deny: 2, maze: 2, score: 3, limit: 2, decide: 1]
+      import Limen.Policy,
+        only: [trust: 2, allow: 2, deny: 2, maze: 2, score: 3, limit: 2, decide: 1]
+
       Module.register_attribute(__MODULE__, :limen_rules, accumulate: true)
       Module.register_attribute(__MODULE__, :limen_limits, accumulate: true)
       Module.register_attribute(__MODULE__, :limen_decide, [])
@@ -130,6 +142,12 @@ defmodule Limen.Policy do
       @before_compile Limen.Policy
     end
   end
+
+  @doc """
+  Allows the request when `condition` holds, before bans, limits and every
+  other rule.
+  """
+  defmacro trust(name, opts), do: rule(:trust, name, 0, opts, __CALLER__)
 
   @doc """
   Allows the request when `condition` holds, skipping scoring.
@@ -252,9 +270,15 @@ defmodule Limen.Policy do
       |> Map.merge(references(compiled, decide, signals, scope))
       |> Map.merge(%{limits: limits, mode: Keyword.get(opts, :mode), clauses: clauses})
 
+    [metadata_function(metadata) | functions(compiled, decide_ast, scope)]
+  end
+
+  defp functions(compiled, decide_ast, scope) do
+    {trusts, others} = Enum.split_with(compiled, &(&1.meta.kind == :trust))
+
     [
-      metadata_function(metadata),
-      evaluate_function(compiled, scope.ctx),
+      trust_function(trusts, scope.ctx),
+      evaluate_function(others, scope.ctx),
       Enum.map(compiled, &rule_function(&1, scope.ctx)),
       Enum.map(compiled, &match_function(&1, scope.ctx)),
       decide_function(decide_ast, scope)
@@ -309,6 +333,45 @@ defmodule Limen.Policy do
       quote do
         @doc false
         def __limen__(unquote(key)), do: unquote(Macro.escape(value))
+      end
+    end
+  end
+
+  # Trust rules are checked apart, before anything else happens to the
+  # request: the first that matches trusts the client.
+  defp trust_function([], _ctx) do
+    quote do
+      @doc false
+      def __trust__(_ctx), do: {:untrusted, []}
+    end
+  end
+
+  defp trust_function(compiled, ctx) do
+    body = List.foldr(compiled, quote(do: {:untrusted, errors}), &trust_rule(&1.meta, &2, ctx))
+
+    quote do
+      @doc false
+      def __trust__(unquote(ctx)) do
+        errors = []
+        unquote(body)
+      end
+    end
+  end
+
+  defp trust_rule(%{name: name}, next, ctx) do
+    quote do
+      case __rule__(unquote(name), unquote(ctx)) do
+        true ->
+          {:trusted, __match__(unquote(name), unquote(ctx))}
+
+        result ->
+          errors =
+            case result do
+              false -> errors
+              {:error, error} -> [error | errors]
+            end
+
+          unquote(next)
       end
     end
   end
@@ -412,6 +475,7 @@ defmodule Limen.Policy do
 
   defp compile_rule({kind, name, weight, condition, line, extra}, scope) do
     {expanded, info} = Compiler.expand(condition, scope.ctx, scope.provided, scope.env)
+    if kind == :trust, do: trust_only!(name, info, line, scope.env)
 
     observed =
       for {source, ast} <- info.observed do
@@ -434,6 +498,20 @@ defmodule Limen.Policy do
       rates: info.rates,
       signals: info.signals
     }
+  end
+
+  # Trust rules run before any signal is collected or rate counted.
+  defp trust_only!(name, info, line, env) do
+    collected = MapSet.difference(info.signals, MapSet.new(Compiler.identity_keys()))
+
+    if MapSet.size(collected) > 0 or MapSet.size(info.rates) > 0 do
+      raise CompileError,
+        file: env.file,
+        line: line,
+        description:
+          "trust #{inspect(name)} runs before signals are collected and rates counted: " <>
+            "use facts, the client identity, headers, lists and request fields"
+    end
   end
 
   # A rule whose condition raises does not match; the error is recorded.
@@ -532,10 +610,18 @@ defmodule Limen.Policy do
   Evaluates the allow, deny and score rules of `policy` and its `decide`
   block against `ctx`.
 
-  Limits are checked separately, see `Limen.Policy.Runtime.check_limits/2`.
+  Trust rules and limits are checked separately, see `check_trust/2` and
+  `Limen.Policy.Runtime.check_limits/2`.
   """
   @spec evaluate(module(), Context.t()) :: result()
   def evaluate(policy, %Context{} = ctx), do: policy.__evaluate__(ctx)
+
+  @doc """
+  Checks the `trust` rules of `policy` against `ctx`: the match of the first
+  that holds, or the errors of those that raised.
+  """
+  @spec check_trust(module(), Context.t()) :: {:trusted, Match.t()} | {:untrusted, [term()]}
+  def check_trust(policy, %Context{} = ctx), do: policy.__trust__(ctx)
 
   @doc """
   Renders `policy` for humans.

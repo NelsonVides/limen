@@ -94,6 +94,10 @@ defmodule Limen.Socket do
     * `:mode` - `:dry_run` or `:enforce`, overriding the instance's mode.
     * `:facts` - facts about the connection, as for `Limen.put_facts/2`,
       recorded in the decision.
+    * `:policy` - a `Limen.Policy` whose `trust` rules are checked first,
+      with the facts: a trusted connection is allowed at the `:trust`
+      stage, whatever its token and even when its prefix is banned, as the
+      same client's requests are by `Limen.Plug`.
 
   Returns `{:ok, decision}` when the connection may proceed (always, in
   dry-run mode) and `{:error, decision}` when it must be refused.
@@ -106,15 +110,33 @@ defmodule Limen.Socket do
     ctx = Signal.identify(context(connect_info, instance, opts), instance.config)
 
     decision =
-      case BanList.lookup(instance, ctx.prefix, ctx.now) do
-        nil -> verify(Map.get(params || %{}, param()), ctx, mode)
-        ban -> Gate.banned(ban, mode, :socket)
+      case trust(Keyword.get(opts, :policy), ctx) do
+        {:trusted, match} ->
+          %Decision{
+            action: :allow,
+            stage: :trust,
+            mode: mode,
+            policy: opts[:policy],
+            matches: [match]
+          }
+
+        {:untrusted, errors} ->
+          decision =
+            case BanList.lookup(instance, ctx.prefix, ctx.now) do
+              nil -> verify(Map.get(params || %{}, param()), ctx, mode)
+              ban -> Gate.banned(ban, mode, :socket)
+            end
+
+          %{decision | errors: decision.errors ++ errors}
       end
 
     decision = Gate.finalize(decision, ctx, started)
     :ok = Gate.emit(decision, nil, instance)
     if decision.enforced, do: {:error, decision}, else: {:ok, decision}
   end
+
+  defp trust(nil, _ctx), do: {:untrusted, []}
+  defp trust(policy, ctx), do: Limen.Policy.check_trust(policy, ctx)
 
   defp verify(token, ctx, mode) do
     case verify_token(token, ctx) do

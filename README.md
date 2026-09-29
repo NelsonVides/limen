@@ -125,6 +125,7 @@ request
   ▼
 Limen.Plug
   ├── Identify   client address behind trusted proxies, prefix, JA4
+  ├── Trust?     a trust rule on the application's facts → allow
   ├── Trap?      trap path → flag the prefix, maze
   ├── Ban?       banned prefix → deny, or maze
   ├── Limit      GCRA hard limits → throttle

@@ -20,15 +20,18 @@ defmodule Limen.Plug do
 
     1. **Identify** the client: address, prefix and JA4 (see `Limen.Signal`),
        and track its behaviour.
-    2. **Ban**: a banned prefix is denied, or sent to the maze (see
+    2. **Trust**: the policy's `trust` rules, which can use the facts the
+       application stated (see `Limen.put_facts/2`), allow the request
+       before anything else.
+    3. **Ban**: a banned prefix is denied, or sent to the maze (see
        `Limen.Maze`) when its ban says so.
-    3. **Limit**: the policy's hard limits.
-    4. **Pass**: a valid pass cookie (see `Limen.Challenge`) allows the
+    4. **Limit**: the policy's hard limits.
+    5. **Pass**: a valid pass cookie (see `Limen.Challenge`) allows the
        request right away, without collecting any other signal.
-    5. **Collect** the policy's signals.
-    6. **Rules**: `allow` and `deny` rules, then scoring and `decide`. See
+    6. **Collect** the policy's signals.
+    7. **Rules**: `allow` and `deny` rules, then scoring and `decide`. See
        `Limen.Policy`.
-    7. **Act**: continue, or respond on the application's behalf: `403` for
+    8. **Act**: continue, or respond on the application's behalf: `403` for
        denials, `429` with `Retry-After` for throttling, the challenge page
        for challenged navigations, a slow maze page for `GET` requests sent
        to the maze.
@@ -40,7 +43,8 @@ defmodule Limen.Plug do
 
   Requests under a trap path of the plug's instance (see `Limen.Trap`) are
   settled at the `:trap` stage, before any route: the client is flagged and
-  sent to the maze.
+  sent to the maze, unless a `trust` rule of the policy covering the path
+  trusts it.
 
   Each evaluation produces a `Limen.Decision`, emitted as a
   `[:limen, :decision]` telemetry event, sampled into `Limen.DecisionLog`,
@@ -155,7 +159,8 @@ defmodule Limen.Plug do
             gate(conn, path, target, instance)
 
           trap ->
-            trapped(conn, trap, instance)
+            {_segments, _path, target} = find_route(routes, path_info)
+            trapped(conn, trap, target, instance)
         end
     end
   end
@@ -198,22 +203,50 @@ defmodule Limen.Plug do
   end
 
   # A client already sent to the maze stays there; one that was only denied
-  # is caught again, and its ban escalated to the maze.
-  defp trapped(conn, trap, instance) do
+  # is caught again, and its ban escalated to the maze. Clients the policy
+  # covering the path trusts are neither.
+  defp trapped(conn, trap, target, instance) do
     started = System.monotonic_time()
     ctx = Signal.identify(Context.from_conn(conn, instance), instance.config)
     {conn, ctx} = Behaviour.track(conn, ctx)
 
     {decision, ctx} =
-      case BanList.lookup(instance, ctx.prefix, ctx.now) do
-        %{action: :maze} = ban -> {Gate.banned(ban, instance.config.mode), ctx}
-        _none_or_denied -> Trap.decide(ctx, trap)
+      case trust(target, ctx, instance.config) do
+        {:trusted, decision} ->
+          {decision, ctx}
+
+        {:untrusted, errors} ->
+          {decision, ctx} =
+            case BanList.lookup(instance, ctx.prefix, ctx.now) do
+              %{action: :maze} = ban -> {Gate.banned(ban, instance.config.mode), ctx}
+              _none_or_denied -> Trap.decide(ctx, trap)
+            end
+
+          {with_errors(decision, errors), ctx}
       end
 
     %{decision | route: trap}
     |> Gate.finalize(ctx, started)
     |> act(conn, ctx)
   end
+
+  defp trust({policy, route_mode, _instance}, ctx, config) do
+    case Policy.check_trust(policy, ctx) do
+      {:trusted, match} ->
+        mode = route_mode || policy.__limen__(:mode) || config.mode
+
+        {:trusted,
+         %Decision{action: :allow, stage: :trust, mode: mode, policy: policy, matches: [match]}}
+
+      untrusted ->
+        untrusted
+    end
+  end
+
+  defp trust(_off_or_track, _ctx, _config), do: {:untrusted, []}
+
+  defp with_errors(decision, []), do: decision
+  defp with_errors(decision, errors), do: %{decision | errors: decision.errors ++ errors}
 
   # Routes may use another instance than the plug's.
   defp target_instance({_policy, _mode, name}, %Instance{name: name} = instance), do: instance
@@ -227,12 +260,21 @@ defmodule Limen.Plug do
     end
   end
 
-  defp evaluate({policy, route_mode, _instance}, ctx, config) do
-    mode = route_mode || policy.__limen__(:mode) || config.mode
+  defp evaluate({policy, route_mode, _instance} = target, ctx, config) do
+    case trust(target, ctx, config) do
+      {:trusted, decision} ->
+        {decision, ctx}
 
-    case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
-      nil -> run_policy(policy, Runtime.track(policy, ctx), mode)
-      ban -> {%{Gate.banned(ban, mode) | policy: policy}, ctx}
+      {:untrusted, errors} ->
+        mode = route_mode || policy.__limen__(:mode) || config.mode
+
+        {decision, ctx} =
+          case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
+            nil -> run_policy(policy, Runtime.track(policy, ctx), mode)
+            ban -> {%{Gate.banned(ban, mode) | policy: policy}, ctx}
+          end
+
+        {with_errors(decision, errors), ctx}
     end
   end
 

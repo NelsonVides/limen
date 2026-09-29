@@ -26,6 +26,16 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
           ...
         end
 
+    With a `:policy`, its `trust` rules are checked first, with the facts
+    stated by `put_facts/2` in an earlier hook, so that clients the HTTP
+    gate trusts (say, signed-in users) connect whatever their token, as
+    they browse whatever their prefix:
+
+        live_session :default,
+          on_mount: [MyAppWeb.LimenFacts, {Limen.LiveView, otp_app: :my_app, policy: MyApp.BotPolicy}] do
+          ...
+        end
+
     Only connected mounts are checked; the initial HTTP render went through
     `Limen.Plug`. A connection that fails the check is redirected to the page
     it was mounting, which takes the client back through the HTTP gate (and

@@ -52,7 +52,9 @@ Signals only observe: they never decide or block anything.
 | Term | Meaning |
 |---|---|
 | Policy | A module written with `Limen.Policy`: the signals it needs, its rules and a `decide` block. `Limen.Policy.Default` is the built-in one. |
-| Rule | One named line of a policy: `allow`, `deny`, `maze`, `score` or `limit`, with its condition in `when:`. |
+| Rule | One named line of a policy: `trust`, `allow`, `deny`, `maze`, `score` or `limit`, with its condition in `when:`. |
+| Fact | Something the application knows about a request and Limen cannot, such as whether the client is signed in, stated with `Limen.put_facts/2` and read with `fact(:signed_in)`. |
+| Trust | A `trust` rule allows a client before anything else happens, bans and limits included: for clients the application vouches for, usually with a fact. |
 | Score | The sum of the weights of the matching `score` rules, so that many weak facts add up to one number. |
 | `decide` | The block that turns the score into an action, such as `score >= 150 -> :deny`. |
 | Limit | A hard cap per client, such as 100 requests a second, enforced with [GCRA] (`Limen.State.Gcra`). Limits are checked before any rule; exceeding one throttles. |
@@ -68,7 +70,7 @@ A limit is exact and blocks; a rate is approximate and only scores.
 |---|---|
 | Decision | The record of one verdict (`Limen.Decision`): the action, the stage, the score, the matching rules, every signal value with its evidence, and the time it took. `Limen.Decision.explain/1` renders it. |
 | Action | What should happen: `:allow`, `:challenge`, `:throttle`, `:deny`, `:tarpit` or `:maze`. |
-| Stage | Where the decision was reached, and so which mechanism made it: `:ban`, `:limit`, `:pass`, `:rule`, `:decide`, `:trap`, `:socket`, `:endpoint` or `:off`. |
+| Stage | Where the decision was reached, and so which mechanism made it: `:trust`, `:ban`, `:limit`, `:pass`, `:rule`, `:decide`, `:trap`, `:socket`, `:endpoint` or `:off`. |
 | Mode | `:dry_run` or `:enforce`. In dry-run mode everything is computed and recorded as in enforce mode, and only the final action is skipped. See [Rolling out with dry-run](dry-run-rollout.md). |
 | Enforced | Whether the decision's action was actually carried out. |
 
@@ -149,8 +151,8 @@ connects (`Limen.Socket`, `Limen.LiveView`).
    path.
 
 Within one request, the stages that can end the evaluation run in this
-order: a trap route (`:trap`); a ban or flag (`:ban`); an exceeded limit
-(`:limit`); a valid pass (`:pass`). Otherwise the policy's signals are
+order: a trusted client (`:trust`); a trap route (`:trap`); a ban or flag
+(`:ban`); an exceeded limit (`:limit`); a valid pass (`:pass`). Otherwise the policy's signals are
 collected, and a hard rule decides (`:rule`) or the score does (`:decide`).
 Behaviour and rates are counted before any of these, so they include every
 request. Last, the decision is recorded and emitted, and its action is

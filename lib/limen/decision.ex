@@ -26,9 +26,10 @@ defmodule Limen.Decision do
 
   The stage names the step of the pipeline that settled the decision:
   `:off`, `:endpoint` (a Limen challenge endpoint), `:trap` (a honeypot, see
-  `Limen.Trap`), `:ban`, `:limit`, `:pass`, `:rule` (an `allow`, `deny` or
-  `maze` rule short-circuited), `:decide` (the score thresholds), or `:socket`
-  (a WebSocket or LiveView connection check).
+  `Limen.Trap`), `:trust` (a policy's `trust` rule), `:ban`, `:limit`,
+  `:pass`, `:rule` (an `allow`, `deny` or `maze` rule short-circuited),
+  `:decide` (the score thresholds), or `:socket` (a WebSocket or LiveView
+  connection check).
   """
 
   use Limen.Boundary, type: :strict, deps: [Limen.IP], exports: [Match]
@@ -38,7 +39,7 @@ defmodule Limen.Decision do
   @type action :: :allow | :challenge | :throttle | :deny | :tarpit | :maze
   @type mode :: :dry_run | :enforce
   @type stage ::
-          :off | :endpoint | :trap | :ban | :limit | :pass | :rule | :decide | :socket
+          :off | :endpoint | :trap | :trust | :ban | :limit | :pass | :rule | :decide | :socket
 
   @type t :: %__MODULE__{
           instance: atom() | nil,
@@ -89,7 +90,8 @@ defmodule Limen.Decision do
     A rule that matched, and the values its condition observed.
     """
 
-    @type kind :: :allow | :deny | :maze | :score | :limit | :ban | :pass | :list | :trap
+    @type kind ::
+            :trust | :allow | :deny | :maze | :score | :limit | :ban | :pass | :list | :trap
     @type t :: %__MODULE__{
             name: atom(),
             kind: kind(),
