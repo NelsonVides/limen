@@ -20,6 +20,16 @@ defmodule Limen.Sketch.BloomTest do
     assert false_positives / 20_000 < 0.02
   end
 
+  test "keys hashed once keep false positives near the configured rate" do
+    bloom = Bloom.new(10_000, 0.01)
+    for n <- 1..10_000, do: Bloom.put_hash(bloom, Bloom.hash_once({:in, n}))
+
+    false_positives =
+      Enum.count(1..20_000, &Bloom.member_hash?(bloom, Bloom.hash_once({:out, &1})))
+
+    assert false_positives / 20_000 < 0.02
+  end
+
   test "put reports whether the key is new" do
     bloom = Bloom.new(100, 0.001)
     assert Bloom.put(bloom, "a")

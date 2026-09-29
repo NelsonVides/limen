@@ -54,6 +54,20 @@ defmodule Limen.Sketch.Bloom do
     do: {:erlang.phash2(key, 1 <<< 32), :erlang.phash2({key, :limen}, 1 <<< 32) ||| 1}
 
   @doc """
+  Like `hash/1`, hashing `key` only once: the second hash is derived from the
+  first, which halves the cost for large keys.
+
+  Keys whose first hashes collide then share every bit, which adds a false
+  positive rate of about `n / 2^32` for `n` keys: negligible for a filter at
+  1% or more, too much for a replay guard at one in a million.
+  """
+  @spec hash_once(term()) :: hash()
+  def hash_once(key) do
+    first = :erlang.phash2(key, 1 <<< 32)
+    {first, :erlang.phash2(first, 1 <<< 32) ||| 1}
+  end
+
+  @doc """
   `put/2` for a key hashed with `hash/1`.
   """
   @spec put_hash(t(), hash()) :: boolean()

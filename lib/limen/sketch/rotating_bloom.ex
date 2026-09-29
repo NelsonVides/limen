@@ -31,9 +31,15 @@ defmodule Limen.Sketch.RotatingBloom do
   Adds `key` unless it was seen recently. Returns `true` if it was new.
   """
   @spec put_new(t(), term()) :: boolean()
-  def put_new(%__MODULE__{} = filter, key) do
+  def put_new(%__MODULE__{} = filter, key), do: put_new_hash(filter, Bloom.hash(key))
+
+  @doc """
+  `put_new/2` for a key hashed with `Limen.Sketch.Bloom.hash/1` or
+  `Limen.Sketch.Bloom.hash_once/1`.
+  """
+  @spec put_new_hash(t(), Bloom.hash()) :: boolean()
+  def put_new_hash(%__MODULE__{} = filter, hash) do
     {current, previous} = generations(filter)
-    hash = Bloom.hash(key)
     not Bloom.member_hash?(previous, hash) and Bloom.put_hash(current, hash)
   end
 

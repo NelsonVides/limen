@@ -169,8 +169,11 @@ defmodule Limen.State do
   Whether a client prefix had not requested `path` recently.
   """
   @spec new_path?(Instance.t(), Limen.IP.prefix(), String.t()) :: boolean()
-  def new_path?(%Instance{state: %{distinct: %{paths: paths}}}, prefix, path),
-    do: RotatingBloom.put_new(paths, {prefix, path})
+  def new_path?(%Instance{state: %{distinct: %{paths: paths}}}, prefix, path) do
+    # Hashing once adds about 0.05% of false positives at the filter's
+    # capacity, next to the 2% it is sized for.
+    RotatingBloom.put_new_hash(paths, Bloom.hash_once({prefix, path}))
+  end
 
   @doc false
   @spec estimate_active_prefixes(Instance.t(), integer()) :: non_neg_integer()
