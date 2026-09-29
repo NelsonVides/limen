@@ -87,6 +87,9 @@ defmodule Limen.Config do
           minutes.
       * `:hosting` - additional ASNs classified as hosting providers, on top
         of the built-in list.
+      * `:source` - the `Limen.Signal.Asn.Source` addresses are looked up in.
+        Defaults to `Limen.Signal.Asn`, the iptoasn.com data of `:file` and
+        `:url`, which must not be set with another source.
 
     * `:fcrdns` - crawler verification, see `Limen.Signal.Fcrdns`:
       * `:crawlers` - map of crawler names (as classified by
@@ -252,7 +255,13 @@ defmodule Limen.Config do
     timeout: 300_000
   }
 
-  @asn_defaults %{file: nil, url: nil, hosting: [], refresh: @asn_refresh_defaults}
+  @asn_defaults %{
+    file: nil,
+    url: nil,
+    hosting: [],
+    source: Limen.Signal.Asn,
+    refresh: @asn_refresh_defaults
+  }
 
   @fcrdns_crawlers %{
     "googlebot" => ["googlebot.com", "google.com"],
@@ -494,9 +503,16 @@ defmodule Limen.Config do
 
     with {:ok, asn} <- merge_known(@asn_defaults, opts, &valid_asn?/2),
          {:ok, refresh} <- asn_refresh(refresh) do
-      if asn.url && is_nil(asn.file),
-        do: {:error, "an :asn :url needs a :file to keep the data in"},
-        else: {:ok, %{asn | refresh: refresh}}
+      cond do
+        asn.url && is_nil(asn.file) ->
+          {:error, "an :asn :url needs a :file to keep the data in"}
+
+        asn.source != Limen.Signal.Asn and (asn.file || asn.url) ->
+          {:error, ":file and :url are the default source's, not #{inspect(asn.source)}'s"}
+
+        true ->
+          {:ok, %{asn | refresh: refresh}}
+      end
     end
   end
 
@@ -636,6 +652,9 @@ defmodule Limen.Config do
 
   defp valid_asn?(:hosting, asns),
     do: is_list(asns) and Enum.all?(asns, &(is_integer(&1) and &1 > 0))
+
+  defp valid_asn?(:source, source),
+    do: is_atom(source) and Code.ensure_loaded?(source) and function_exported?(source, :lookup, 2)
 
   defp valid_asn?(:refresh, _refresh), do: false
 

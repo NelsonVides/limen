@@ -60,6 +60,7 @@ defmodule Limen.Signal do
     exports: [
       Asn,
       Asn.Loader,
+      Asn.Source,
       Behaviour,
       ClientIP,
       Fcrdns,

@@ -91,6 +91,10 @@ config :my_app, Limen,
 what is loaded, the last check and the next one. The `[:limen, :asn, :loaded]`
 and `[:limen, :asn, :checked]` telemetry events report every load and check.
 
+If your application already keeps IP data current, such as MaxMind's
+GeoLite2 databases, point the signal at it with `asn: [source: MyApp.GeoAsn]`
+(see `Limen.Signal.Asn.Source`) and Limen loads nothing of its own.
+
 ## Rates and limits
 
 `rate(dimension, per: window)` in a policy is a sliding-window estimate over

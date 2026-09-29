@@ -162,6 +162,7 @@ defmodule Limen.MixProject do
           Limen.Signal.UserAgent,
           Limen.Signal.Behaviour,
           Limen.Signal.Asn,
+          Limen.Signal.Asn.Source,
           Limen.Signal.Asn.Loader,
           Limen.Signal.Asn.Table,
           Limen.Signal.Asn.Schedule,

@@ -74,6 +74,55 @@ defmodule Limen.Signal.AsnTest do
     assert signals(limen, {9, 9, 9, 9}) == %{asn: nil, asn_kind: :unknown}
   end
 
-  defp signals(limen, ip),
-    do: Asn.collect(%Context{instance: instance(limen), client_ip: ip}).signals
+  defmodule GeoSource do
+    @behaviour Limen.Signal.Asn.Source
+
+    @impl true
+    def lookup(_instance, {192, 0, 2, 1}), do: %{asn: 16_509, country: "IE", name: "AMAZON"}
+
+    def lookup(_instance, {192, 0, 2, 2}),
+      do: %{asn: 64_496, name: "Rack Rentals", kind: :hosting}
+
+    def lookup(_instance, {192, 0, 2, 3}), do: %{country: "PL"}
+    def lookup(_instance, {192, 0, 2, 4}), do: raise("database not loaded")
+    def lookup(_instance, _ip), do: nil
+  end
+
+  @tag config: [asn: [source: GeoSource, hosting: [64_497]]]
+  test "reads another source when configured", %{limen: limen} do
+    assert collect(limen, {192, 0, 2, 1}).signals == %{
+             asn: 16_509,
+             asn_kind: :hosting,
+             asn_country: "IE",
+             asn_name: "AMAZON"
+           }
+
+    # The source's own classification wins.
+    assert %{asn: 64_496, asn_kind: :hosting} = collect(limen, {192, 0, 2, 2}).signals
+
+    assert %{asn: nil, asn_kind: :unknown, asn_country: "PL"} =
+             collect(limen, {192, 0, 2, 3}).signals
+
+    unknown = collect(limen, {198, 51, 100, 1})
+    assert unknown.signals == %{asn: nil, asn_kind: :unknown}
+    assert unknown.evidence.asn == %{source: GeoSource}
+
+    failed = collect(limen, {192, 0, 2, 4})
+    assert failed.signals == %{asn: nil, asn_kind: :unknown}
+    assert failed.evidence.asn == %{source: GeoSource, error: "database not loaded"}
+  end
+
+  test "the default source's data options need the default source" do
+    assert_raise ArgumentError, ~r/:file and :url are the default source's/, fn ->
+      Limen.Config.build(asn: [source: GeoSource, file: "/tmp/ip2asn.tsv"])
+    end
+
+    assert_raise ArgumentError, ~r/invalid value for :source/, fn ->
+      Limen.Config.build(asn: [source: Enum])
+    end
+  end
+
+  defp collect(limen, ip), do: Asn.collect(%Context{instance: instance(limen), client_ip: ip})
+
+  defp signals(limen, ip), do: collect(limen, ip).signals
 end

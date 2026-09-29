@@ -45,21 +45,32 @@ defmodule Limen.Signal.Asn do
   iptoasn.com publishes its data in the public domain. Any source in the
   same format works, such as a file your own pipeline writes.
 
+  ## Other sources
+
+  To look addresses up in data your application already has, such as
+  MaxMind's GeoLite2, implement `Limen.Signal.Asn.Source` and set it as the
+  `:source`; Limen then loads no data of its own:
+
+      config :my_app, Limen, asn: [source: MyApp.GeoAsn]
+
   ## Classification
 
   `:asn_kind` is `:hosting` for a built-in list of large cloud and hosting
   providers plus any ASN in the `:hosting` option, `:other` for any other
   known ASN and `:unknown` when the address is not in the table (or no table
-  is loaded). Google and Microsoft run crawlers from their main ASNs; allow
-  verified crawlers before scoring hosting providers.
+  is loaded). A custom source may classify its entries itself. Google and
+  Microsoft run crawlers from their main ASNs; allow verified crawlers
+  before scoring hosting providers.
 
-  Provides `:asn`, `:asn_kind`, `:asn_country` and `:asn_name`.
+  Provides `:asn`, `:asn_kind`, `:asn_country` and `:asn_name`. With a
+  custom source, the evidence for `:asn` names it.
 
   [ASN]: https://www.rfc-editor.org/rfc/rfc1930
   [iptoasn]: https://iptoasn.com/
   """
 
   @behaviour Limen.Signal
+  @behaviour Limen.Signal.Asn.Source
 
   alias Limen.Context
   alias Limen.Signal.Asn.Table
@@ -106,12 +117,12 @@ defmodule Limen.Signal.Asn do
 
   @type entry :: Table.entry()
 
-  @impl true
+  @impl Limen.Signal
   def provides, do: [:asn, :asn_kind, :asn_country, :asn_name]
 
-  @impl true
-  def collect(%Context{instance: instance, client_ip: ip} = ctx) do
-    case lookup(instance.name, ip) do
+  @impl Limen.Signal
+  def collect(%Context{instance: %{config: %{asn: %{source: __MODULE__}}} = instance} = ctx) do
+    case lookup(instance.name, ctx.client_ip) do
       nil ->
         Context.put_signals(ctx, %{asn: nil, asn_kind: :unknown})
 
@@ -125,9 +136,47 @@ defmodule Limen.Signal.Asn do
     end
   end
 
+  def collect(%Context{instance: %{config: %{asn: %{source: source}} = config} = instance} = ctx) do
+    case source_lookup(source, instance.name, ctx.client_ip) do
+      {:error, message} ->
+        Context.put_signals(ctx, %{asn: nil, asn_kind: :unknown}, %{
+          asn: %{source: source, error: message}
+        })
+
+      nil ->
+        Context.put_signals(ctx, %{asn: nil, asn_kind: :unknown}, %{asn: %{source: source}})
+
+      entry ->
+        asn = Map.get(entry, :asn)
+
+        Context.put_signals(
+          ctx,
+          %{
+            asn: asn,
+            asn_kind: Map.get_lazy(entry, :kind, fn -> asn && kind(asn, config) end) || :unknown,
+            asn_country: Map.get(entry, :country),
+            asn_name: Map.get(entry, :name)
+          },
+          %{asn: %{source: source}}
+        )
+    end
+  end
+
+  defp source_lookup(_source, _instance, nil), do: nil
+
+  defp source_lookup(source, instance, ip) do
+    source.lookup(instance, ip)
+  rescue
+    exception -> {:error, Exception.message(exception)}
+  end
+
   @doc """
   Returns the ASN entry covering `ip` in the data `instance` loaded, if any.
+
+  This is the default `Limen.Signal.Asn.Source`, whatever the instance's
+  `:source`.
   """
+  @impl Limen.Signal.Asn.Source
   @spec lookup(atom(), :inet.ip_address() | nil) :: entry() | nil
   def lookup(_instance, nil), do: nil
 
