@@ -39,7 +39,8 @@ defmodule Limen.State.BanList do
 
   If the prefix is already banned, the ban is extended when the new one lasts
   longer, escalated to `:enforce` when either ban enforces, and to the maze
-  when either sends there: a client caught in a trap stays caught.
+  when either sends there: a client caught in a trap stays caught. Bans of
+  the same prefix made at the same time all take effect.
 
   ## Options
 
@@ -52,23 +53,19 @@ defmodule Limen.State.BanList do
   @spec ban(Instance.t(), Limen.IP.prefix(), pos_integer(), keyword()) :: :ok | {:error, :full}
   def ban(%Instance{} = instance, prefix, ttl, opts \\ []) when is_integer(ttl) and ttl > 0 do
     entry = entry(prefix, ttl, opts)
-    %{table: table, size: size} = instance.state.bans
+    origin = elem(entry, 4)
 
-    cond do
-      :ets.member(table, prefix) ->
-        extend(instance, table, entry)
-
-      :atomics.get(size, 1) >= instance.config.state.max_bans ->
-        Limen.Stats.incr(instance, :saturated)
-        {:error, :full}
-
-      :ets.insert_new(table, entry) ->
-        :atomics.add(size, 1, 1)
-        publish(instance, {:ban, entry}, elem(entry, 4))
+    case store(instance, entry) do
+      :added ->
+        publish(instance, {:ban, entry}, origin)
         added(instance, entry, ttl)
 
-      true ->
-        extend(instance, table, entry)
+      :merged ->
+        publish(instance, {:ban, entry}, origin)
+
+      {:error, :full} ->
+        Limen.Stats.incr(instance, :saturated)
+        {:error, :full}
     end
   end
 
@@ -80,29 +77,57 @@ defmodule Limen.State.BanList do
      Keyword.get(opts, :origin, :admin), Keyword.get(opts, :action, :deny)}
   end
 
-  defp extend(instance, table, {prefix, expires_at, reason, mode, origin, action} = entry) do
-    publish(instance, {:ban, entry}, origin)
-
-    case :ets.lookup(table, prefix) do
-      [{^prefix, current_expiry, _reason, current_mode, _origin, current_action}] ->
-        current = {current_expiry, current_mode, current_action}
-
-        merged =
-          {max(current_expiry, expires_at), strongest(current_mode, mode, :enforce),
-           strongest(current_action, action, :maze)}
-
-        # The reason and origin only change when the ban does.
-        if merged != current do
-          {expires_at, mode, action} = merged
-          :ets.insert(table, {prefix, expires_at, reason, mode, origin, action})
-        end
-
-        :ok
-
-      [] ->
-        :ets.insert(table, entry)
-        :ok
+  # Adds the ban, or merges it into the prefix's. Every insert adds one to
+  # the list's size and every removal subtracts one, so the size stays exact
+  # even when bans race each other, an unban or a sweep.
+  defp store(instance, entry) do
+    case :ets.lookup(instance.state.bans.table, elem(entry, 0)) do
+      [current] -> merge(instance, current, entry)
+      [] -> insert(instance, entry)
     end
+  end
+
+  defp insert(instance, entry) do
+    %{table: table, size: size} = instance.state.bans
+
+    cond do
+      :atomics.get(size, 1) >= instance.config.state.max_bans ->
+        {:error, :full}
+
+      :ets.insert_new(table, entry) ->
+        :atomics.add(size, 1, 1)
+        :added
+
+      # Banned meanwhile.
+      true ->
+        store(instance, entry)
+    end
+  end
+
+  # The merged ban replaces the one read only if that one is still there,
+  # unchanged. Otherwise another ban, an unban or a sweep got there first, and
+  # the ban is stored again from what is there now.
+  defp merge(instance, current, {prefix, expires_at, reason, mode, origin, action} = entry) do
+    {^prefix, current_expiry, _reason, current_mode, _origin, current_action} = current
+    expires_at = max(current_expiry, expires_at)
+    mode = strongest(current_mode, mode, :enforce)
+    action = strongest(current_action, action, :maze)
+    merged = {prefix, expires_at, reason, mode, origin, action}
+
+    cond do
+      # The reason and origin only change when the ban does.
+      {expires_at, mode, action} == {current_expiry, current_mode, current_action} -> :merged
+      replace(instance.state.bans.table, current, merged) -> :merged
+      true -> store(instance, entry)
+    end
+  end
+
+  # Every change to a ban extends it or escalates it, so a ban whose expiry,
+  # mode and action are those read is unchanged. They are matched as
+  # literals; the reason, which can be any term, is not matched at all.
+  defp replace(table, {prefix, expires_at, _reason, mode, _origin, action}, new) do
+    head = {prefix, expires_at, :_, mode, :_, action}
+    :ets.select_replace(table, [{head, [], [{:const, new}]}]) == 1
   end
 
   defp strongest(current, new, strong) when strong in [current, new], do: strong
@@ -220,7 +245,9 @@ defmodule Limen.State.BanList do
     swept =
       :ets.select_delete(table, [{{:_, :"$1", :_, :_, :_, :_}, [{:"=<", :"$1", now}], [true]}])
 
-    :atomics.put(size, 1, :ets.info(table, :size))
+    # Subtracted, not reset to the table's size, which would lose the bans
+    # added meanwhile: every ban added counts one.
+    :atomics.sub(size, 1, swept)
     swept
   end
 end

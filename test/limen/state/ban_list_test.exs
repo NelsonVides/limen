@@ -70,6 +70,72 @@ defmodule Limen.State.BanListTest do
     assert BanList.ban(instance, {4, 3, 32}, 60) == :ok
   end
 
+  @tag config: [state: [max_bans: 1_000]]
+  test "sweeping while bans are added keeps the list within its cap", %{
+    instance: instance,
+    now: now
+  } do
+    # Sweeps look at time 0, so none of these bans has expired, but every
+    # sweep races the new bans.
+    banners = 8
+    sweeper = Task.async(fn -> sweep_until_stopped(instance) end)
+
+    1..banners
+    |> Enum.map(fn banner ->
+      Task.async(fn ->
+        for n <- 1..5_000, do: BanList.ban(instance, {4, banner * 100_000 + n, 32}, 60, now: now)
+      end)
+    end)
+    |> Task.await_many(30_000)
+
+    send(sweeper.pid, :stop)
+    Task.await(sweeper)
+
+    assert :ets.info(instance.state.bans.table, :size) <= 1_000 + banners
+  end
+
+  defp sweep_until_stopped(instance) do
+    receive do
+      :stop -> :ok
+    after
+      0 ->
+        BanList.sweep(instance, 0)
+        sweep_until_stopped(instance)
+    end
+  end
+
+  test "concurrent bans of one prefix all take effect", %{instance: instance, now: now} do
+    # Banners wait to start together, and each extends the ban to a different
+    # expiry, one of them enforcing it and one sending it to the maze: the
+    # result must have the longest expiry and both escalations.
+    banners = 16
+
+    for n <- 1..300 do
+      prefix = {4, n, 32}
+      BanList.ban(instance, prefix, 1, mode: :dry_run, now: now)
+
+      tasks =
+        for ttl <- 2..(banners + 1) do
+          opts = [mode: if(ttl == 2, do: :enforce, else: :dry_run), now: now]
+          opts = if ttl == 3, do: [action: :maze] ++ opts, else: opts
+
+          Task.async(fn ->
+            receive do
+              :go -> BanList.ban(instance, prefix, ttl, opts)
+            end
+          end)
+        end
+
+      Enum.each(tasks, &send(&1.pid, :go))
+      Task.await_many(tasks)
+
+      assert %{expires_at: expires_at, mode: :enforce, action: :maze} =
+               BanList.lookup(instance, prefix, now)
+
+      assert expires_at == now + (banners + 1) * 1_000
+    end
+  end
+
   describe "Limen.ban/4" do
     test "aggregates addresses to their prefix", %{instance: instance} do
       assert Limen.ban(instance, "192.0.2.1", 60) == :ok
