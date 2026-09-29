@@ -134,6 +134,25 @@ some clients get lucky and some take several times the average.
 plus a bit every 20 points, up to 22. Pass options to change the curve:
 `difficulty_for(score, base: 14, from: 50, step: 25, max: 20)`.
 
+Difficulties are between 1 and 32 bits; others are brought into that range.
+The lowest, `{:challenge, difficulty: 1}`, takes two hashes on average and
+costs nothing: it only shows that the client runs the page's script (or
+something imitating it), posts the answer back and keeps the pass cookie,
+which HTTP libraries and simple scrapers do not. It makes a good first rung
+for mildly suspicious clients, below the challenges that cost something:
+
+```elixir
+decide do
+  score >= 70 -> {:maze, ban: 86_400}
+  score >= 40 -> {:challenge, difficulty: 16}
+  score >= 20 -> {:challenge, difficulty: 1}
+  true -> :allow
+end
+```
+
+There is no difficulty 0: a challenge any answer solves would let through
+any client that posts one, with or without the script.
+
 The point is not that a bot cannot pay: it is that paying for every identity
 it rotates through is expensive, while a person pays once per pass.
 

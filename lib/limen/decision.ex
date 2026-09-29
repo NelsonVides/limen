@@ -13,7 +13,9 @@ defmodule Limen.Decision do
 
     * `:allow` - the request continues.
     * `:challenge` - the client must solve a proof-of-work challenge
-      (`params.difficulty` leading zero bits).
+      (`params.difficulty` leading zero bits, from 1 to 32; 1 costs nothing
+      and only shows that the client runs the challenge's script, see the
+      tuning guide).
     * `:throttle` - `429 Too Many Requests` (`params.retry_after` seconds).
     * `:deny` - `403 Forbidden`; `params.ban` seconds, when set, also bans the
       client prefix.
