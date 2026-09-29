@@ -4,7 +4,7 @@ defmodule Limen.Challenge.Pass do
 
   Like challenge tokens, passes are stateless: an expiry and a truncated
   [HMAC]-SHA256 over it and the client identity (see
-  `Limen.Challenge.binding/1`), with a key only used for passes.
+  `Limen.Challenge.pass_binding/1`), with a key only used for passes.
 
       <<version, expires_at::32, mac::16 bytes>>
 
@@ -27,7 +27,7 @@ defmodule Limen.Challenge.Pass do
     ttl = ctx.instance.config.challenge.pass_ttl
     expires_at = div(now, 1_000) + ttl
     [key | _previous] = Challenge.keys(ctx.instance, :pass)
-    mac = Challenge.mac(key, [<<expires_at::32>>, Challenge.binding(ctx)])
+    mac = Challenge.mac(key, [<<expires_at::32>>, Challenge.pass_binding(ctx)])
     {Base.url_encode64(<<@version, expires_at::32>> <> mac, padding: false), ttl}
   end
 
@@ -53,7 +53,8 @@ defmodule Limen.Challenge.Pass do
            Base.url_decode64(value, padding: false),
          true <- div(now, 1_000) < expires_at || {:error, :expired},
          keys = Challenge.keys(ctx.instance, :pass),
-         true <- authentic?(keys, expires_at, mac, Challenge.binding(ctx)) || {:error, :invalid} do
+         true <-
+           authentic?(keys, expires_at, mac, Challenge.pass_binding(ctx)) || {:error, :invalid} do
       {:ok, expires_at}
     else
       {:error, reason} when reason in [:expired, :invalid] -> {:error, reason}

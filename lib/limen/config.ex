@@ -124,6 +124,12 @@ defmodule Limen.Config do
         `"/__limen"`.
       * `:ttl` - seconds a challenge stays valid. Defaults to `300`.
       * `:pass_ttl` - seconds a pass cookie stays valid. Defaults to `3_600`.
+      * `:bind` - what pass cookies and socket tokens are bound to: any of
+        `:prefix`, `:ja4` and `:user_agent`. Defaults to all three. Leaving
+        `:prefix` out keeps passes valid when a client changes networks,
+        such as a phone moving from Wi-Fi to mobile data, at the cost of
+        letting a pass be used from anywhere with the same JA4 and user
+        agent. Changing it invalidates the passes already issued.
       * `:cookie` - the pass cookie name. Defaults to `"_limen_pass"`.
       * `:status` - HTTP status of the challenge page. Defaults to `403`.
       * `:no_js` - what clients without JavaScript get: `{:meta_refresh,
@@ -318,6 +324,7 @@ defmodule Limen.Config do
     path: "/__limen",
     ttl: 300,
     pass_ttl: 3_600,
+    bind: [:prefix, :ja4, :user_agent],
     cookie: "_limen_pass",
     status: 403,
     no_js: {:meta_refresh, 5},
@@ -570,7 +577,12 @@ defmodule Limen.Config do
 
   defp validate(:challenge, opts, _config) when is_list(opts) do
     with {:ok, challenge} <- merge_known(@challenge_defaults, opts, &valid_challenge?/2) do
-      {:ok, Map.put(challenge, :segments, String.split(challenge.path, "/", trim: true))}
+      # In a fixed order, so the default is recognised however it was given.
+      bind = Enum.filter([:prefix, :ja4, :user_agent], &(&1 in challenge.bind))
+
+      {:ok,
+       %{challenge | bind: bind}
+       |> Map.put(:segments, String.split(challenge.path, "/", trim: true))}
     end
   end
 
@@ -775,6 +787,9 @@ defmodule Limen.Config do
   defp valid_challenge?(:no_js, :deny), do: true
   defp valid_challenge?(:no_js, {:meta_refresh, s}), do: is_integer(s) and s >= 0
   defp valid_challenge?(:secure_cookie, secure), do: secure in [true, false, :auto]
+
+  defp valid_challenge?(:bind, bind),
+    do: is_list(bind) and bind -- [:prefix, :ja4, :user_agent] == [] and bind == Enum.uniq(bind)
 
   defp valid_challenge?(key, value) when key in [:ttl, :pass_ttl, :replay_capacity],
     do: is_integer(value) and value > 0

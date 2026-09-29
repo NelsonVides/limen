@@ -145,6 +145,14 @@ any of those change (a phone switching from Wi-Fi to mobile data, a browser
 update). Longer passes mean fewer interruptions for people and more reuse by
 anyone who can keep the identity stable.
 
+`challenge: [bind: [:ja4, :user_agent]]` stops binding passes (and socket
+tokens) to the address: a pass then survives network changes, which suits
+mobile visitors and [carrier-grade NAT][CGNAT], where addresses change or
+are shared. The price is that a copied pass works from any address with the
+same JA4 and user agent, and a scraper can share one solved challenge across
+its whole pool of addresses. Pair it with a shorter `:pass_ttl`, and keep
+limits, which apply to pass holders too, per prefix.
+
 ## Tarpit
 
 `{:tarpit, delay: ms}` holds a request before denying it: cheap for the BEAM,

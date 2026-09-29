@@ -15,10 +15,12 @@ defmodule Limen.Socket do
   Tokens are signed with the keys of an instance, and must be checked by the
   same instance.
 
-  The token is signed with its own key and bound to the client prefix, JA4
-  and user agent, like a pass cookie, but it is not a pass: it cannot be used
-  as a cookie. A client whose identity changed since the page was served
-  fails the check, reloads the page, and goes through the HTTP gate again.
+  The token is signed with its own key and bound to the client's identity
+  like a pass cookie (by default its prefix, JA4 and user agent, see the
+  `:bind` option of `Limen.Challenge`), but it is not a pass: it cannot be
+  used as a cookie. A client whose identity changed since the page was
+  served fails the check, reloads the page, and goes through the HTTP gate
+  again.
 
   Checking needs the peer address, `x-` headers (for `x-forwarded-for` and
   the JA4 header behind a proxy) and the user agent:
@@ -65,7 +67,7 @@ defmodule Limen.Socket do
         ctx = Signal.identify(Context.from_conn(conn, instance), instance.config)
         expires_at = div(ctx.now, 1_000) + instance.config.challenge.pass_ttl
         [key | _previous] = Challenge.keys(instance, :socket)
-        mac = Challenge.mac(key, [<<expires_at::32>>, Challenge.binding(ctx)])
+        mac = Challenge.mac(key, [<<expires_at::32>>, Challenge.pass_binding(ctx)])
         Base.url_encode64(<<@version, expires_at::32>> <> mac, padding: false)
     end
   end
@@ -136,7 +138,7 @@ defmodule Limen.Socket do
            Base.url_decode64(token, padding: false),
          true <- div(now, 1_000) < expires_at || {:error, :expired},
          true <-
-           authentic?(ctx.instance, expires_at, mac, Challenge.binding(ctx)) ||
+           authentic?(ctx.instance, expires_at, mac, Challenge.pass_binding(ctx)) ||
              {:error, :invalid} do
       {:ok, expires_at}
     else

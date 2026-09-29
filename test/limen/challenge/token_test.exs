@@ -120,6 +120,34 @@ defmodule Limen.Challenge.TokenTest do
       assert Pass.verify("garbage", client.([])) == {:error, :malformed}
     end
 
+    @tag config: [secret_key: @secret, challenge: [bind: [:user_agent, :ja4]]]
+    test "are bound to what :bind names", %{client: client, limen: limen} do
+      {value, _ttl} = Pass.issue(client.([]))
+
+      assert {:ok, _expires_at} = Pass.verify(value, client.(prefix: {4, 0xCB007101, 32}))
+      assert Pass.verify(value, client.(user_agent: "other")) == {:error, :invalid}
+      assert Pass.verify(value, client.(ja4: nil)) == {:error, :invalid}
+
+      # Challenge tokens stay bound to the whole identity.
+      token = Token.issue(client.([]), 8)
+      assert Token.verify(token, client.(prefix: {4, 0xCB007101, 32})) == {:error, :invalid}
+
+      # Passes issued under one binding are not accepted under another.
+      Limen.update_config(limen, :challenge, bind: [:prefix, :ja4, :user_agent])
+      assert Pass.verify(value, client.(instance: instance(limen))) == {:error, :invalid}
+
+      Limen.update_config(limen, :challenge, bind: [:ja4, :user_agent])
+      assert {:ok, _expires_at} = Pass.verify(value, client.(instance: instance(limen)))
+    end
+
+    test ":bind names parts of the identity" do
+      for invalid <- [[:asn], [:ja4, :ja4], :prefix] do
+        assert_raise ArgumentError, ~r/invalid value for :bind/, fn ->
+          Limen.Config.build(challenge: [bind: invalid])
+        end
+      end
+    end
+
     test "cannot be used as challenge tokens or vice versa", %{client: client} do
       {value, _ttl} = Pass.issue(client.([]))
       token = Token.issue(client.([]), 8)

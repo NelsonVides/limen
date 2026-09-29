@@ -26,7 +26,8 @@ defmodule Limen.Instance do
     :tarpit,
     :maze,
     :replay,
-    :cookie_pattern
+    :cookie_pattern,
+    :pass_binding
   ]
 
   @type t :: %__MODULE__{
@@ -39,7 +40,8 @@ defmodule Limen.Instance do
           tarpit: :atomics.atomics_ref() | nil,
           maze: :atomics.atomics_ref() | nil,
           replay: term(),
-          cookie_pattern: :binary.cp() | nil
+          cookie_pattern: :binary.cp() | nil,
+          pass_binding: [:prefix | :ja4 | :user_agent] | nil
         }
 
   @doc """
@@ -114,12 +116,18 @@ defmodule Limen.Instance do
 
   # What is derived from the configuration is derived again on every
   # publish, so a configuration change cannot leave it stale: the pass
-  # cookie's name, compiled for searching cookie headers.
+  # cookie's name, compiled for searching cookie headers, and what passes
+  # are bound to, `nil` for the whole identity, where the fast path reads it.
   @doc false
   @spec publish(t()) :: :ok
-  def publish(%__MODULE__{name: name, config: config} = instance) do
-    pattern = :binary.compile_pattern(config.challenge.cookie <> "=")
-    :persistent_term.put({Limen, name}, %{instance | cookie_pattern: pattern})
+  def publish(%__MODULE__{name: name, config: %{challenge: challenge}} = instance) do
+    pattern = :binary.compile_pattern(challenge.cookie <> "=")
+    binding = if challenge.bind != [:prefix, :ja4, :user_agent], do: challenge.bind
+
+    :persistent_term.put(
+      {Limen, name},
+      %{instance | cookie_pattern: pattern, pass_binding: binding}
+    )
   end
 
   @doc false

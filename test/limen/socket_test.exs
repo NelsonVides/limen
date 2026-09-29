@@ -58,6 +58,15 @@ defmodule Limen.SocketTest do
              Limen.Socket.check(connect_info(), %{}, instance: limen)
   end
 
+  @tag config: [challenge: [bind: [:ja4, :user_agent]]]
+  test "tokens follow the pass binding", %{limen: limen} do
+    token = page_token(limen)
+    moved = connect_info(%{peer_data: %{address: {192, 0, 2, 44}, port: 1, ssl_cert: nil}})
+
+    assert {:ok, %Decision{action: :allow}} =
+             Limen.Socket.check(moved, %{"_limen" => token}, instance: limen, mode: :enforce)
+  end
+
   test "banned clients cannot connect", %{limen: limen} do
     token = page_token(limen)
     Limen.ban(limen, {127, 0, 0, 1}, 60)

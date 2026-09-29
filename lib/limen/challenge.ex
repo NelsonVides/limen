@@ -25,7 +25,10 @@ defmodule Limen.Challenge do
 
   A pass stops working when the client's prefix, JA4 or user agent change,
   for example when a phone moves between networks; the client then solves a
-  new challenge.
+  new challenge. The `:bind` option of the `:challenge` configuration picks
+  what passes and socket tokens are bound to (see `pass_binding/1`), for
+  example `bind: [:ja4, :user_agent]` to keep passes across networks.
+  Challenge tokens, which live for minutes, are always bound to all three.
 
   ## Clients without JavaScript
 
@@ -60,10 +63,34 @@ defmodule Limen.Challenge do
   alias Limen.{Context, IP}
 
   @doc """
-  The identity a token or pass is bound to, as the iodata its MAC covers.
+  The identity a challenge token is bound to, as the iodata its MAC covers:
+  the client's prefix, JA4 and user agent.
   """
   @spec binding(Context.t()) :: iolist()
   def binding(%Context{prefix: prefix, ja4: ja4, user_agent: user_agent}) do
+    [IP.prefix_to_binary(prefix), 0, ja4 || "", 0, user_agent || ""]
+  end
+
+  @doc """
+  The identity a pass cookie or socket token is bound to, as the iodata its
+  MAC covers: the parts of the identity the instance's `:bind` option names,
+  by default all three, as for challenge tokens.
+
+  A part left out is left empty, in its place, so passes issued under one
+  `:bind` setting are not accepted under another.
+  """
+  @spec pass_binding(Context.t()) :: iolist()
+  def pass_binding(%Context{instance: %{pass_binding: bind}} = ctx) when bind != nil do
+    [
+      if(:prefix in bind, do: IP.prefix_to_binary(ctx.prefix), else: ""),
+      0,
+      if(:ja4 in bind, do: ctx.ja4 || "", else: ""),
+      0,
+      if(:user_agent in bind, do: ctx.user_agent || "", else: "")
+    ]
+  end
+
+  def pass_binding(%Context{prefix: prefix, ja4: ja4, user_agent: user_agent}) do
     [IP.prefix_to_binary(prefix), 0, ja4 || "", 0, user_agent || ""]
   end
 
