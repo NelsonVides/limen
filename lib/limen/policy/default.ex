@@ -37,7 +37,9 @@ defmodule Limen.Policy.Default do
 
   score :hosting_asn, 25, when: signal(:asn_kind) == :hosting
   score :burst, 30, when: rate(:prefix, per: :second) > 20
-  score :sustained, 20, when: rate(:prefix, per: :minute) > 300
+  # The behaviour signal already counts each prefix's requests per minute;
+  # `rate(:prefix, per: :minute)` would count them a second time.
+  score :sustained, 20, when: signal(:requests_per_minute) > 300
 
   score :probing, 25, when: signal(:not_found_ratio) > 0.5 and signal(:requests_per_minute) >= 10
 
