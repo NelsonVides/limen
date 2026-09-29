@@ -14,6 +14,10 @@ defmodule Limen.Context do
   header) and `cookie_headers` (the values of the `cookie` headers, in
   order, unparsed).
 
+  `via_proxy` tells whether `client_ip` came from a forwarding header set by
+  a trusted proxy (see `Limen.Signal.ClientIP`); a request from a trusted
+  proxy that carried no such header is the proxy's own.
+
   Every signal value that ends up in a context is copied into the
   `Limen.Decision` record, so a decision can always be explained from the
   values that produced it.

@@ -106,14 +106,14 @@ defmodule Limen.Signal do
     {forwarded, ja4, user_agent, fetch_dest, cookies} =
       read(headers, {config.client_ip_header, config.ja4_header}, [], nil, nil, nil, [])
 
-    {client, via_proxy, prefix, source} = ClientIP.client(ctx.peer_ip, config, forwarded)
-    {ja4, evidence} = ja4(JA4.check(ja4, via_proxy), Map.put(evidence, :client_ip, source))
+    {client, trusted_peer, prefix, source} = ClientIP.client(ctx.peer_ip, config, forwarded)
+    {ja4, evidence} = ja4(JA4.check(ja4, trusted_peer), Map.put(evidence, :client_ip, source))
 
     # One update: each one copies the context.
     %{
       ctx
       | client_ip: client,
-        via_proxy: via_proxy,
+        via_proxy: ClientIP.forwarded?(source),
         prefix: prefix,
         ja4: ja4,
         user_agent: user_agent,

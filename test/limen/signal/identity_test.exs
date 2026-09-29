@@ -79,17 +79,28 @@ defmodule Limen.Signal.IdentityTest do
     assert ctx.evidence.client_ip == {:invalid, "forwarded"}
   end
 
+  test "via_proxy means the address came from a forwarding header" do
+    assert resolve([{"x-forwarded-for", "192.0.2.1"}]).via_proxy
+
+    # A trusted proxy's own request, or one whose header could not be used.
+    refute resolve([]).via_proxy
+    refute resolve([{"x-forwarded-for", "junk"}]).via_proxy
+    refute resolve([{"x-forwarded-for", "192.0.2.1"}], client_ip_header: nil).via_proxy
+  end
+
   test "JA4 is only read from trusted proxies" do
     ja4 = "t13d1516h2_8daaf6152771_02713d6af862"
-    trusted = %Context{via_proxy: true, headers: [{"x-ja4", ja4}]}
-    untrusted = %Context{via_proxy: false, headers: [{"x-ja4", ja4}]}
+    # Trusted peers are trusted with the JA4 header even when they forward no
+    # client address.
+    trusted = %Context{peer_ip: @proxy, headers: [{"x-ja4", ja4}]}
+    untrusted = %Context{peer_ip: {192, 0, 2, 9}, headers: [{"x-ja4", ja4}]}
 
     assert JA4.resolve(trusted, config([])).ja4 == ja4
     assert JA4.resolve(untrusted, config([])).ja4 == nil
-    assert JA4.resolve(%Context{via_proxy: true, headers: []}, config([])).evidence == %{}
+    assert JA4.resolve(%Context{peer_ip: @proxy, headers: []}, config([])).evidence == %{}
 
     assert JA4.resolve(
-             %Context{via_proxy: true, headers: [{"x-tls-fp", ja4}]},
+             %Context{peer_ip: @proxy, headers: [{"x-tls-fp", ja4}]},
              config(ja4_header: "X-TLS-FP")
            ).ja4 == ja4
   end

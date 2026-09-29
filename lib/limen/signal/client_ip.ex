@@ -18,6 +18,10 @@ defmodule Limen.Signal.ClientIP do
   evidence records why. The client address is then aggregated to its prefix
   (see `Limen.IP.prefix/3`).
 
+  The context's `via_proxy` is `true` when the address was read from the
+  header, and `false` when it is the peer's own, whether or not the peer is
+  a trusted proxy.
+
   Provides `:client_ip` and `:prefix`; evidence for `:client_ip` is `:peer`,
   `{:header, name}` or `{:invalid, name}`.
 
@@ -42,12 +46,12 @@ defmodule Limen.Signal.ClientIP do
   def resolve(%Context{peer_ip: peer} = ctx, config) do
     name = config.client_ip_header
     values = for {^name, value} <- ctx.headers, do: value
-    {client, via_proxy, prefix, source} = client(peer, config, values)
+    {client, _trusted_peer, prefix, source} = client(peer, config, values)
 
     %{
       ctx
       | client_ip: client,
-        via_proxy: via_proxy,
+        via_proxy: forwarded?(source),
         prefix: prefix,
         evidence: Map.put(ctx.evidence, :client_ip, source)
     }
@@ -56,22 +60,28 @@ defmodule Limen.Signal.ClientIP do
   # The client address, whether the peer is a trusted proxy, the prefix and
   # the evidence, from the values of the client address header in order. For
   # `Limen.Signal.identify/2`, which reads those values in its own pass over
-  # the headers and updates the context once.
+  # the headers and updates the context once. A trusted peer is not enough
+  # for `via_proxy`: the address must also have come from the header.
   @doc false
   @spec client(:inet.ip_address(), Limen.Config.t(), [String.t()]) ::
           {:inet.ip_address(), boolean(), Context.prefix(), term()}
   def client(peer, config, values) do
-    via_proxy = IP.member?(config.trusted_proxies, peer)
+    trusted_peer = IP.member?(config.trusted_proxies, peer)
 
     {client, source} =
-      if via_proxy and config.client_ip_header != nil do
+      if trusted_peer and config.client_ip_header != nil do
         from_header(values, config.client_ip_header, config.trusted_proxies, peer)
       else
         {peer, :peer}
       end
 
-    {client, via_proxy, IP.prefix(client, config.ipv4_prefix, config.ipv6_prefix), source}
+    {client, trusted_peer, IP.prefix(client, config.ipv4_prefix, config.ipv6_prefix), source}
   end
+
+  @doc false
+  @spec forwarded?(term()) :: boolean()
+  def forwarded?({:header, _name}), do: true
+  def forwarded?(_peer_or_invalid), do: false
 
   defp from_header([value | _later], "x-real-ip" = name, _trusted, peer) do
     case IP.parse(value) do

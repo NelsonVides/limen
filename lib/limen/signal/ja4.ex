@@ -27,7 +27,7 @@ defmodule Limen.Signal.JA4 do
 
   @behaviour Limen.Signal
 
-  alias Limen.Context
+  alias Limen.{Context, IP}
 
   @impl true
   def provides, do: [:ja4]
@@ -40,7 +40,9 @@ defmodule Limen.Signal.JA4 do
   """
   @spec resolve(Context.t(), Limen.Config.t()) :: Context.t()
   def resolve(%Context{} = ctx, config) do
-    case check(Context.header(ctx, config.ja4_header), ctx.via_proxy) do
+    trusted_peer = IP.member?(config.trusted_proxies, ctx.peer_ip)
+
+    case check(Context.header(ctx, config.ja4_header), trusted_peer) do
       {:ignored, reason} -> %{ctx | ja4: nil, evidence: Map.put(ctx.evidence, :ja4, reason)}
       ja4 -> %{ctx | ja4: ja4}
     end
@@ -52,7 +54,7 @@ defmodule Limen.Signal.JA4 do
   @doc false
   @spec check(String.t() | nil, boolean()) ::
           String.t() | nil | {:ignored, :untrusted_peer | :malformed}
-  def check(nil, _via_proxy), do: nil
+  def check(nil, _trusted_peer), do: nil
   def check(_value, false), do: {:ignored, :untrusted_peer}
   def check(value, true), do: if(valid?(value), do: value, else: {:ignored, :malformed})
 
