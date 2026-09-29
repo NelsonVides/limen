@@ -14,9 +14,12 @@ a message.
   user agent, per-client request, 404 and asset patterns, hosting [ASNs][ASN]
   (the numbered networks addresses belong to, such as a cloud provider's), and
   search engine crawlers verified with [forward-confirmed reverse DNS][FCrDNS]
-  (the address's DNS name must belong to the crawler and resolve back to it).
+  (the address's DNS name must belong to the crawler and resolve back to it),
+  and AI crawlers and link previews told apart from search engines.
 - **A compiled policy DSL**: rules become plain functions at compile time, and
-  every decision records which rules matched and the values they saw.
+  every decision records which rules matched and the values they saw. Rules
+  can use facts your application states, such as whether the client is
+  signed in, and parameters you tune at runtime.
 - **Proof-of-work challenges** modelled on the [Anubis] proxy: the browser
   searches for a hash with enough leading zero bits, a fraction of a second
   for a visitor but a cost a scraper pays again for every identity it uses.
@@ -39,7 +42,7 @@ a message.
 ```elixir
 def deps do
   [
-    {:limen, "~> 0.1"}
+    {:limen, "~> 0.2"}
   ]
 end
 ```

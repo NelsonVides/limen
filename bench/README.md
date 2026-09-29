@@ -31,6 +31,33 @@ plug scenarios resolve a Chrome client behind a trusted proxy with a JA4
 header; the full path rotates through 20,000 clients so none of them hits a
 limit, and evaluates `Limen.Policy.Default` with its default signals.
 
+### 0.2.0
+
+Alternating two runs of 0.1.0 and two of 0.2.0 on the same machine, every
+scenario stayed within 4% of 0.1.0, inside the noise between runs. The new
+features cost nothing measurable where they are not used: a policy without
+`trust` rules answers the trust check with one call, literal weights compile
+as before, and passes bound to the whole identity take the same path as
+before, the binding being derived when the instance is published.
+
+| Scenario | Median | p99 |
+|---|---|---|
+| state: ban lookup, miss | 54 ns | 98 ns |
+| state: window incr, hot key | 122 ns | 177 ns |
+| state: window count | 127 ns | 188 ns |
+| state: gcra check | 128 ns | 190 ns |
+| signals: asn lookup, ipv4 | 180 ns | 310 ns |
+| policy: evaluate default, chrome | 289 ns | 378 ns |
+| signals: asn lookup, ipv6 | 345 ns | 511 ns |
+| state: window incr, flood of unique keys | 367 ns | 466 ns |
+| signals: identity via proxy | 712 ns | 866 ns |
+| challenge: verify pass cookie | 800 ns | 1.02 µs |
+| challenge: verify token | 849 ns | 990 ns |
+| signals: http shape, chrome via proxy | 1.32 µs | 1.54 µs |
+| plug: pass holders, chrome via proxy | 3.86 µs | 7.56 µs |
+| plug: dry-run, default policy, chrome via proxy | 4.85 µs | 8.74 µs |
+| maze: render page | 137 µs | 164 µs |
+
 ### 0.1.0
 
 | Scenario | Median | p99 |

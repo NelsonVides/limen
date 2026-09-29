@@ -9,7 +9,7 @@ dry-run](dry-run-rollout.md) for that.
 ```elixir
 def deps do
   [
-    {:limen, "~> 0.1"}
+    {:limen, "~> 0.2"}
   ]
 end
 ```
