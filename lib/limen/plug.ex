@@ -456,7 +456,7 @@ defmodule Limen.Plug do
       metadata
     )
 
-    page = Page.render(token, difficulty, Challenge.return_to(conn), instance)
+    page = Page.build(conn, token, difficulty, Challenge.return_to(conn), instance)
 
     conn
     |> Plug.Conn.put_resp_content_type("text/html")

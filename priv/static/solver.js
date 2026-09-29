@@ -15,13 +15,18 @@
   var difficulty = Number(root.getAttribute("data-difficulty"));
   var workerUrl = root.getAttribute("data-worker");
 
+  // The page may carry its own words for what this script says.
+  function text(name, fallback) {
+    return root.getAttribute("data-text-" + name) || fallback;
+  }
+
   function fail(message) {
     status.textContent = message;
     root.setAttribute("data-state", "failed");
   }
 
   if (typeof Worker === "undefined") {
-    fail("Your browser cannot run the check. Please use a recent browser.");
+    fail(text("unsupported", "Your browser cannot run the check. Please use a recent browser."));
     return;
   }
 
@@ -42,14 +47,14 @@
       stop();
       form.elements.nonce.value = event.data.nonce;
       root.setAttribute("data-state", "solved");
-      status.textContent = "Done, taking you there…";
+      status.textContent = text("solved", "Done, taking you there…");
       form.submit();
     };
 
     worker.onerror = function () {
       if (solved) return;
       stop();
-      fail("The check could not run in this browser.");
+      fail(text("failed", "The check could not run in this browser."));
     };
 
     worker.postMessage({ token: token, difficulty: difficulty, start: i, step: count });

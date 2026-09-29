@@ -1,7 +1,7 @@
 defmodule Limen.Challenge.FlowTest do
   use Limen.Case, async: true
 
-  alias Limen.Challenge.Token
+  alias Limen.Challenge.{Page, Token}
   alias Limen.Decision
   alias Limen.Test.Policies.Challenging
   alias Limen.Test.Pow
@@ -53,6 +53,63 @@ defmodule Limen.Challenge.FlowTest do
     assert conn.resp_body =~ ~r{<script src="/__limen/solver.js\?v=[\w-]+" defer>}
     refute conn.resp_body =~ "<script>"
     assert %Decision{action: :challenge, enforced: true} = Limen.decision(conn)
+  end
+
+  test "the page is in English and carries the script's texts", %{opts: opts} do
+    body = request(opts).resp_body
+
+    assert body =~ ~s(<html lang="en">)
+    assert body =~ "<title>Checking your browser</title>"
+    assert body =~ "you will be taken to the page in 5 seconds"
+    assert attribute(body, "data-text-solved") == "Done, taking you there…"
+  end
+
+  defmodule PolishPage do
+    use Limen.Challenge.Page
+
+    @impl true
+    def text(conn, %{seconds: seconds}) do
+      if Plug.Conn.get_req_header(conn, "accept-language") == ["pl"] do
+        %{
+          lang: "pl",
+          title: "Sprawdzamy przeglądarkę",
+          no_js: "Za #{seconds} s przejdziesz dalej <bez JavaScriptu>",
+          solved: "Gotowe"
+        }
+      else
+        []
+      end
+    end
+
+    @impl true
+    def render(assigns) do
+      Page.template(%{assigns | stylesheets: Enum.concat(assigns.stylesheets, ["/brand.css"])})
+    end
+  end
+
+  @tag config: [challenge: [page: PolishPage]]
+  test "an application's page module speaks the visitor's language", %{opts: opts} do
+    polish = request(opts, :get, "/articles?page=2", nil, [{"accept-language", "pl"}]).resp_body
+
+    assert polish =~ ~s(<html lang="pl">)
+    assert polish =~ "<title>Sprawdzamy przeglądarkę</title>"
+    assert polish =~ "Za 5 s przejdziesz dalej &lt;bez JavaScriptu&gt;"
+    assert attribute(polish, "data-text-solved") == "Gotowe"
+    # What it leaves out stays in English.
+    assert polish =~ "This takes a moment and only happens once in a while."
+    assert polish =~ ~s(<link rel="stylesheet" href="/brand.css">)
+
+    # And it is still a page solver.js can solve.
+    token = token(request(opts))
+    assert verify(opts, token, Pow.solve(token, 8)).status == 303
+
+    assert request(opts).resp_body =~ ~s(<html lang="en">)
+  end
+
+  test "page modules must implement the behaviour" do
+    assert_raise ArgumentError, ~r/invalid value for :page/, fn ->
+      Limen.Config.build(challenge: [page: Enum])
+    end
   end
 
   test "solving it sets a pass that the fast path accepts", %{opts: opts, limen: limen} do

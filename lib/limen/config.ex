@@ -132,6 +132,10 @@ defmodule Limen.Config do
         agent. Changing it invalidates the passes already issued.
       * `:cookie` - the pass cookie name. Defaults to `"_limen_pass"`.
       * `:status` - HTTP status of the challenge page. Defaults to `403`.
+      * `:page` - the module writing the challenge page, with texts in the
+        visitor's language or markup of your own, see
+        `Limen.Challenge.Page`. Defaults to `Limen.Challenge.Page`, in
+        English.
       * `:no_js` - what clients without JavaScript get: `{:meta_refresh,
         seconds}` (default `{:meta_refresh, 5}`) lets them through after
         waiting, `:deny` shows a message asking to enable JavaScript.
@@ -331,6 +335,7 @@ defmodule Limen.Config do
     bind: [:prefix, :ja4, :user_agent],
     cookie: "_limen_pass",
     status: 403,
+    page: Limen.Challenge.Page,
     no_js: {:meta_refresh, 5},
     secure_cookie: :auto,
     replay_capacity: 100_000
@@ -798,6 +803,11 @@ defmodule Limen.Config do
   defp valid_challenge?(:no_js, :deny), do: true
   defp valid_challenge?(:no_js, {:meta_refresh, s}), do: is_integer(s) and s >= 0
   defp valid_challenge?(:secure_cookie, secure), do: secure in [true, false, :auto]
+
+  defp valid_challenge?(:page, page) do
+    is_atom(page) and Code.ensure_loaded?(page) and function_exported?(page, :text, 2) and
+      function_exported?(page, :render, 1)
+  end
 
   defp valid_challenge?(:bind, bind),
     do: is_list(bind) and bind -- [:prefix, :ja4, :user_agent] == [] and bind == Enum.uniq(bind)
