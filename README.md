@@ -1,5 +1,13 @@
 # Limen
 
+[![Hex.pm Version](https://img.shields.io/hexpm/v/limen.svg)](https://hex.pm/packages/limen)
+[![Hex Docs](https://img.shields.io/badge/hex-docs-lightgreen.svg)](https://hexdocs.pm/limen/)
+[![Hex Downloads](https://img.shields.io/hexpm/dt/limen.svg)](https://hex.pm/packages/limen)
+[![Elixir Versions](https://img.shields.io/badge/elixir-1.18%7C1.19%7C1.20-purple)](https://elixir-lang.org)
+[![Erlang/OTP Versions](https://img.shields.io/badge/erlang%2Fotp-27%7C28%7C29-blue)](https://www.erlang.org)
+[![Build Status](https://github.com/NelsonVides/limen/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NelsonVides/limen/actions/workflows/ci.yml)
+[![License](https://img.shields.io/hexpm/l/limen.svg)](https://github.com/NelsonVides/limen/blob/main/LICENSE)
+
 *Limen* (Latin): threshold. The point every request crosses before it enters.
 
 Limen is native Elixir L7 bot protection: a Plug that classifies requests,
