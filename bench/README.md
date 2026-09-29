@@ -8,7 +8,13 @@ resolution; all figures below are per operation.
 mix bench                                   # print results
 mix bench --output bench/output/head.json   # also write them as JSON
 mix run bench/compare.exs --base a.json --head b.json [--threshold 0.10]
+MIX_ENV=bench mix run bench/stages.exs      # the full path, stage by stage
 ```
+
+`bench/stages.exs` runs the full path cumulatively, one more stage of
+`Limen.Plug` per job, and prints what each stage adds. Differences between
+neighbouring jobs carry some noise, about ±0.2 µs; it attributes cost, and the
+scenarios above measure it.
 
 ## Regression gate
 
@@ -45,6 +51,10 @@ limit, and evaluates `Limen.Policy.Default` with its default signals.
 The flood scenario counts a new key on every call with the exact tables
 capped at 1,000 keys, so almost every call takes the saturated path: a
 membership check plus a Count-Min Sketch update.
+
+The HTTP shape scenario ran on a request without identity, so its user agent
+was never parsed. It was replaced by `signals: http shape, chrome via proxy`,
+on an identified request, which took 3.3 µs at 0.1.0.
 
 ### M8: honeypots and the maze
 

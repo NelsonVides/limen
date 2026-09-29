@@ -114,33 +114,54 @@ defmodule Limen.Bench.Scenarios do
 
   @proxied [trusted_proxies: ["10.0.0.0/8"], client_ip_header: "x-forwarded-for"]
 
+  @doc """
+  The configuration of the plug scenarios: Chrome behind a trusted proxy.
+  """
+  @spec proxied() :: keyword()
+  def proxied, do: @proxied
+
+  @doc """
+  A Chrome navigation through a trusted proxy.
+  """
+  @spec chrome() :: Plug.Conn.t()
+  def chrome do
+    :get
+    |> conn("/articles/42")
+    |> Map.put(:remote_ip, {10, 0, 0, 2})
+    |> Map.put(:scheme, :https)
+    |> Map.put(:req_headers, chrome_headers())
+  end
+
+  @doc """
+  Returns a function giving the next of a pool of Chrome clients, each from
+  its own address. The pool is large enough that none of them hits the
+  default policy's flood limit, so every request takes the full path.
+  """
+  @spec next_client() :: (-> Plug.Conn.t())
+  def next_client do
+    chrome = chrome()
+    pool = List.to_tuple(for n <- 1..20_000, do: with_client(chrome, n))
+    counter = :counters.new(1, [:write_concurrency])
+
+    fn ->
+      :counters.add(counter, 1, 1)
+      elem(pool, rem(:counters.get(counter, 1), tuple_size(pool)))
+    end
+  end
+
   defp plug do
-    chrome =
-      :get
-      |> conn("/articles/42")
-      |> Map.put(:remote_ip, {10, 0, 0, 2})
-      |> Map.put(:scheme, :https)
-      |> Map.put(:req_headers, chrome_headers())
+    chrome = chrome()
 
     identify = fn instance ->
       Signal.identify(Context.from_conn(chrome, instance), instance.config)
     end
 
-    Map.merge(requests(chrome, identify), components(chrome, identify))
+    Map.merge(requests(chrome, identify), components(identify))
   end
 
   defp requests(chrome, identify) do
     opts = Limen.Plug.init(instance: @instance)
-
-    # Clients rotate through a pool large enough that none of them hits the
-    # default policy's flood limit, so every call takes the full path.
-    pool = List.to_tuple(for n <- 1..20_000, do: with_client(chrome, n))
-    counter = :counters.new(1, [:write_concurrency])
-
-    next_client = fn ->
-      :counters.add(counter, 1, 1)
-      elem(pool, rem(:counters.get(counter, 1), tuple_size(pool)))
-    end
+    next_client = next_client()
 
     with_pass = fn instance ->
       {pass, _ttl} = Pass.issue(identify.(instance))
@@ -155,7 +176,7 @@ defmodule Limen.Bench.Scenarios do
     }
   end
 
-  defp components(chrome, identify) do
+  defp components(identify) do
     collect = fn instance -> Signal.collect(identify.(instance), Signal.defaults()) end
 
     with_pass = fn instance ->
@@ -177,8 +198,9 @@ defmodule Limen.Bench.Scenarios do
       "policy: evaluate default, chrome" =>
         {fn ctx -> Policy.evaluate(Policy.Default, ctx) end, @proxied, collect},
       "signals: identity via proxy" => {identify, @proxied},
-      "signals: http shape, chrome" =>
-        {fn instance -> HttpShape.collect(Context.from_conn(chrome, instance)) end, []}
+      # On an identified request: without identity there is no user agent to
+      # parse, which an earlier scenario measured by mistake.
+      "signals: http shape, chrome via proxy" => {&HttpShape.collect/1, @proxied, identify}
     }
   end
 
