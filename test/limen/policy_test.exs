@@ -2,6 +2,7 @@ defmodule Limen.PolicyTest do
   use Limen.Case, async: true
 
   alias Limen.{Context, Decision, Policy}
+  alias Limen.Policy.Runtime
   alias Limen.Test.Policies.{Limited, Mazing, Scoring}
 
   doctest Limen.Policy.Runtime
@@ -289,5 +290,37 @@ defmodule Limen.PolicyTest do
   test "evaluate/2 works on a bare context" do
     result = Policy.evaluate(Scoring, %Context{headers: [{"accept-language", "en"}]})
     assert %{action: :allow, stage: :decide, score: 0} = result
+  end
+
+  defmodule Keyed do
+    use Limen.Policy
+
+    limit :everyone, key: :global, rate: 1, per: :hour, burst: 0
+    limit :fingerprint, key: :ja4, rate: 1, per: :hour, burst: 0
+
+    score :fingerprint_rate, 1, when: rate(:ja4, per: :minute) > 0
+    score :overall_rate, 1, when: rate(:global, per: :minute) > 0
+  end
+
+  test "rates and limits count by their key, and skip requests without one", %{limen: limen} do
+    # The start of an hour centuries ahead, so the rotator never clears it.
+    now = 3_600_000 * 5_000_000
+
+    request = fn prefix, ja4 ->
+      %Context{instance: instance(limen), prefix: prefix, ja4: ja4, now: now, monotonic: 0}
+    end
+
+    without_ja4 = request.({4, 1, 32}, nil)
+    assert Runtime.track(Keyed, without_ja4).rates == %{{:global, :minute} => 1}
+    assert :ok = Runtime.check_limits(Keyed, without_ja4)
+
+    # The global limit covers every prefix.
+    assert {:exceeded, match, _retry_after} =
+             Runtime.check_limits(Keyed, request.({4, 2, 32}, nil))
+
+    assert %{name: :everyone, condition: "1 per hour by global, burst 0"} = match
+
+    with_ja4 = request.({4, 3, 32}, "t13d1516h2_8daaf6152771_02713d6af862")
+    assert %{{:ja4, :minute} => 1, {:global, :minute} => 2} = Runtime.track(Keyed, with_ja4).rates
   end
 end

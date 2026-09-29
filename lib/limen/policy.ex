@@ -213,8 +213,9 @@ defmodule Limen.Policy do
       burst: Keyword.get(opts, :burst, 0)
     }
 
+    # Described once here, rather than for every request it throttles.
     if valid_limit?(limit) do
-      limit
+      Map.put(limit, :condition, Runtime.describe_limit(limit))
     else
       raise CompileError,
         file: caller.file,
@@ -544,7 +545,7 @@ defmodule Limen.Policy do
 
     limits =
       for limit <- policy.__limen__(:limits) do
-        "  limit #{limit.name}: #{Runtime.describe_limit(limit)}"
+        "  limit #{limit.name}: #{limit.condition}"
       end
 
     rules =

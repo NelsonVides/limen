@@ -101,7 +101,7 @@ defmodule Limen.Policy.Runtime do
             match = %Match{
               name: name,
               kind: :limit,
-              condition: describe_limit(limit),
+              condition: limit.condition,
               observed: [{"retry_after_ms", retry_after_ms}]
             }
 
