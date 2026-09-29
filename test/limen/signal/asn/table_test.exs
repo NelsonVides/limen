@@ -53,13 +53,21 @@ defmodule Limen.Signal.Asn.TableTest do
     end
 
     test "copy what they return out of the table" do
-      {:ok, table} =
-        Table.from_rows([{"8.8.8.0", "8.8.8.255", 15_169, "US", String.duplicate("G", 100)}])
+      # Names longer than 64 bytes, which a match would not copy on its own,
+      # and enough rows that each blob is larger than any one value. Before
+      # OTP 28 a small binary reports 16 referenced bytes whatever its size,
+      # so values are compared with the blobs rather than with themselves.
+      rows =
+        for n <- 0..39 do
+          country = <<?A + div(n, 26), ?A + rem(n, 26)>>
+          {"8.8.#{n}.0", "8.8.#{n}.255", 64_500 + n, country, String.duplicate("N", 100)}
+        end
 
-      %{name: name, country: country} = Table.lookup(table, {8, 8, 8, 8})
+      {:ok, table} = Table.from_rows(rows)
+      %{name: name, country: country} = Table.lookup(table, {8, 8, 7, 8})
 
-      assert :binary.referenced_byte_size(name) == byte_size(name)
-      assert :binary.referenced_byte_size(country) == byte_size(country)
+      assert :binary.referenced_byte_size(name) < byte_size(table.names)
+      assert :binary.referenced_byte_size(country) < byte_size(table.countries)
     end
   end
 
