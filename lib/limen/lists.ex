@@ -8,11 +8,14 @@ defmodule Limen.Lists do
   triggers a global GC scan in the runtime: reload lists when they change,
   not per request.
 
-  There are two kinds of lists:
+  There are three kinds of lists:
 
     * exact lists, whose members are compared as terms (`put/3`);
     * CIDR lists, whose members are address ranges and which match any
-      address inside them (`put_cidrs/3`).
+      address inside them (`put_cidrs/3`);
+    * substring lists, which match any string containing one of their
+      members, case included (`put_substrings/3`), for user agents and
+      other headers.
 
   Lists can also be configured with the instance, and are then loaded when it
   starts:
@@ -20,8 +23,13 @@ defmodule Limen.Lists do
       config :my_app, Limen,
         lists: [
           bad_ja4: ["t13d1812h1_85036bcba153_375ca2c5e164"],
-          office: {:cidr, ["192.0.2.0/24", "2001:db8::/32"]}
+          office: {:cidr, ["192.0.2.0/24", "2001:db8::/32"]},
+          scrapers: {:substrings, ["SiteSucker", "HTTrack"]}
         ]
+
+  In a policy, `signal(:user_agent) in list(:scrapers)` then holds for any
+  user agent containing `SiteSucker` or `HTTrack`. A substring list is
+  searched in one pass, however many members it has.
 
   In a policy, `signal(:ja4) in list(:bad_ja4)` compiles to `member?/3`
   against the request's instance. Testing a list that was never defined is
@@ -55,6 +63,22 @@ defmodule Limen.Lists do
   end
 
   @doc """
+  Defines or replaces the substring list `name` of `instance`.
+
+  A string is a member when it contains any of `substrings`, which must not
+  be empty strings.
+  """
+  @spec put_substrings(instance(), name(), [String.t()]) :: :ok
+  def put_substrings(instance, name, substrings) when is_atom(name) and is_list(substrings) do
+    unless Enum.all?(substrings, &(is_binary(&1) and &1 != "")) do
+      raise ArgumentError, "expected non-empty strings, got: #{inspect(substrings)}"
+    end
+
+    pattern = if substrings != [], do: :binary.compile_pattern(substrings)
+    :persistent_term.put(key(instance, name), {:substrings, pattern, substrings})
+  end
+
+  @doc """
   Removes the list `name` of `instance`.
   """
   @spec delete(instance(), name()) :: :ok
@@ -66,7 +90,8 @@ defmodule Limen.Lists do
   @doc """
   Whether `value` is a member of list `name` of `instance`.
 
-  For CIDR lists, `value` must be an address tuple.
+  For CIDR lists, `value` must be an address tuple, and for substring lists
+  a string.
 
       iex> Limen.Lists.put(:doc_instance, :doc_example, ["a", "b"])
       iex> Limen.Lists.member?(:doc_instance, :doc_example, "a")
@@ -74,17 +99,30 @@ defmodule Limen.Lists do
       iex> Limen.Lists.put_cidrs(:doc_instance, :doc_networks, ["192.0.2.0/24"])
       iex> Limen.Lists.member?(:doc_instance, :doc_networks, {192, 0, 2, 7})
       true
+      iex> Limen.Lists.put_substrings(:doc_instance, :doc_agents, ["HTTrack"])
+      iex> Limen.Lists.member?(:doc_instance, :doc_agents, "Mozilla/4.5 (compatible; HTTrack 3.0x)")
+      true
       iex> Limen.Lists.member?(:doc_instance, :undefined_list, "a")
       false
   """
   @spec member?(instance(), name(), term()) :: boolean()
   def member?(instance, name, value) do
     case :persistent_term.get(key(instance, name), nil) do
-      {:exact, members, _values} -> is_map_key(members, value)
-      {:cidr, set, _ranges} when is_tuple(value) -> IP.member?(set, value)
-      _undefined_or_not_an_address -> false
+      {:exact, members, _values} ->
+        is_map_key(members, value)
+
+      {:cidr, set, _ranges} when is_tuple(value) ->
+        IP.member?(set, value)
+
+      {:substrings, pattern, _values} when is_binary(value) and pattern != nil ->
+        contains?(value, pattern)
+
+      _undefined_or_not_an_address ->
+        false
     end
   end
+
+  defp contains?(value, pattern), do: :binary.match(value, pattern) != :nomatch
 
   @doc """
   Returns the members of list `name` of `instance` as given, or `[]`.
@@ -102,6 +140,7 @@ defmodule Limen.Lists do
   def load(instance, lists) do
     Enum.each(lists, fn
       {name, {:cidr, ranges}} -> put_cidrs(instance, name, ranges)
+      {name, {:substrings, substrings}} -> put_substrings(instance, name, substrings)
       {name, values} -> put(instance, name, values)
     end)
   end

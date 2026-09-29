@@ -183,7 +183,8 @@ defmodule Limen.Config do
       * `:max_concurrent` - requests held at once. Defaults to `1_000`.
       * `:max_delay` - longest delay in milliseconds. Defaults to `30_000`.
 
-    * `:lists` - named lists loaded at startup, see `Limen.Lists`.
+    * `:lists` - named lists loaded at startup, see `Limen.Lists`: a list of
+      values, `{:cidr, ranges}` or `{:substrings, strings}` per name.
 
     * `:state` - sizing of the shared state, see `Limen.State`:
       * `:max_keys` - exact keys per time-window epoch slot. Each window
@@ -560,11 +561,7 @@ defmodule Limen.Config do
   end
 
   defp validate(:lists, lists, _config) when is_list(lists) do
-    Enum.each(lists, fn
-      {name, {:cidr, ranges}} when is_atom(name) and is_list(ranges) -> Limen.IP.cidr_set(ranges)
-      {name, values} when is_atom(name) and is_list(values) -> :ok
-      other -> raise ArgumentError, "invalid list #{inspect(other)}"
-    end)
+    Enum.each(lists, &validate_list!/1)
 
     {:ok, lists}
   rescue
@@ -647,6 +644,18 @@ defmodule Limen.Config do
 
   defp sink?(module),
     do: is_atom(module) and Code.ensure_loaded?(module) and function_exported?(module, :write, 2)
+
+  defp validate_list!({name, {:cidr, ranges}}) when is_atom(name) and is_list(ranges),
+    do: Limen.IP.cidr_set(ranges)
+
+  defp validate_list!({name, {:substrings, substrings}} = list)
+       when is_atom(name) and is_list(substrings) do
+    unless Enum.all?(substrings, &token?/1),
+      do: raise(ArgumentError, "invalid list #{inspect(list)}")
+  end
+
+  defp validate_list!({name, values}) when is_atom(name) and is_list(values), do: :ok
+  defp validate_list!(other), do: raise(ArgumentError, "invalid list #{inspect(other)}")
 
   defp user_agent_tokens(:ignore, tokens) when is_list(tokens) do
     if Enum.all?(tokens, &token?/1), do: {:ok, Map.new(tokens, &{&1, :ignore})}, else: :error
