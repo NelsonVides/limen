@@ -4,8 +4,8 @@ defmodule Limen.Telemetry do
 
   Handlers run synchronously in the request process, so they must be cheap and
   must not block. Every event's metadata includes the `:instance` name.
-  Attach heavier consumers to a sampled source instead, such as
-  `Limen.DecisionLog`.
+  Attach heavier consumers to a sampled source instead, such as a
+  `Limen.DecisionLog.Sink`.
 
   ## Events
 

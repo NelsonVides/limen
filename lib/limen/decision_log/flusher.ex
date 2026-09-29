@@ -1,6 +1,7 @@
 defmodule Limen.DecisionLog.Flusher do
   @moduledoc """
-  Drains an instance's decision log buffer to `Logger` periodically.
+  Drains an instance's decision log buffer to its sink periodically, see
+  `Limen.DecisionLog.Sink`.
   """
 
   use GenServer
@@ -48,7 +49,6 @@ defmodule Limen.DecisionLog.Flusher do
 
   defp drain(instance, %{flushed: flushed} = state) do
     {entries, dropped, last} = DecisionLog.since(instance, flushed)
-    level = instance.config.decision_log.level
 
     if dropped > 0 do
       Logger.warning(
@@ -56,11 +56,24 @@ defmodule Limen.DecisionLog.Flusher do
       )
     end
 
-    Enum.each(entries, fn decision ->
-      Logger.log(level, fn -> DecisionLog.report(decision) end)
-    end)
-
+    if entries != [], do: write(instance, entries)
     %{state | flushed: last}
+  end
+
+  # A failing sink loses its batch, not the flusher.
+  defp write(%Instance{name: name, config: %{decision_log: %{sink: {sink, opts}}}}, entries) do
+    sink.write(entries, opts)
+  rescue
+    exception -> sink_failed(name, sink, Exception.format(:error, exception, __STACKTRACE__))
+  catch
+    :exit, reason -> sink_failed(name, sink, Exception.format(:exit, reason, __STACKTRACE__))
+  end
+
+  defp sink_failed(name, sink, error) do
+    Logger.error(
+      "Limen decision log sink #{inspect(sink)} of #{inspect(name)} failed, " <>
+        "its batch is lost: " <> error
+    )
   end
 
   defp schedule(name) do

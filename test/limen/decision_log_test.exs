@@ -55,4 +55,57 @@ defmodule Limen.DecisionLogTest do
     assert log =~ "limen.decision"
     assert log =~ "/flushed"
   end
+
+  defmodule Sink do
+    @behaviour Limen.DecisionLog.Sink
+
+    @impl true
+    def write(decisions, opts) do
+      case Keyword.fetch!(opts, :test) do
+        :raise -> raise "the database is down"
+        pid -> send(pid, {:written, Enum.map(decisions, & &1.path)})
+      end
+    end
+  end
+
+  test "writes batches to the configured sink, oldest first", %{limen: limen} do
+    Limen.update_config(limen, :decision_log, sink: {Sink, test: self()})
+    for n <- 1..3, do: DecisionLog.record(instance(limen), %Decision{path: "/#{n}"})
+
+    Flusher.flush(limen)
+    assert_received {:written, ["/1", "/2", "/3"]}
+
+    # Nothing sampled, nothing written.
+    Flusher.flush(limen)
+    refute_received {:written, _paths}
+
+    DecisionLog.record(instance(limen), %Decision{path: "/4"})
+    Flusher.flush(limen)
+    assert_received {:written, ["/4"]}
+  end
+
+  test "a failing sink loses its batch, not the flusher", %{limen: limen} do
+    Limen.update_config(limen, :decision_log, sink: {Sink, test: :raise})
+    DecisionLog.record(instance(limen), %Decision{path: "/lost"})
+
+    assert capture_log(fn -> Flusher.flush(limen) end) =~ "the database is down"
+
+    Limen.update_config(limen, :decision_log, sink: {Sink, test: self()})
+    DecisionLog.record(instance(limen), %Decision{path: "/kept"})
+    Flusher.flush(limen)
+    assert_received {:written, ["/kept"]}
+  end
+
+  test "the Logger sink logs at its level", %{limen: limen} do
+    Limen.update_config(limen, :decision_log, sink: {Limen.DecisionLog.Logger, level: :error})
+    DecisionLog.record(instance(limen), %Decision{path: "/loud"})
+
+    assert capture_log([level: :error], fn -> Flusher.flush(limen) end) =~ "/loud"
+  end
+
+  test "sinks must implement the behaviour" do
+    assert_raise ArgumentError, ~r/invalid value for :sink/, fn ->
+      Limen.Config.build(decision_log: [sink: Enum])
+    end
+  end
 end

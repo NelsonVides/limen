@@ -176,6 +176,8 @@ defmodule Limen.MixProject do
           Limen.Dashboard.Data,
           Limen.Telemetry,
           Limen.DecisionLog,
+          Limen.DecisionLog.Sink,
+          Limen.DecisionLog.Logger,
           Limen.DecisionLog.Flusher,
           Limen.Stats
         ],

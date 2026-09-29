@@ -2,13 +2,15 @@ defmodule Limen.DecisionLog do
   @moduledoc """
   A sampled, structured decision log.
 
-  Writing to `Logger` from the request path would send a message to a logger
-  handler for every request, so decisions are instead sampled into a
-  fixed-size ring buffer: an ETS table indexed by an `:atomics` cursor, one
+  Writing to `Logger`, or anywhere else, from the request path would send a
+  message or block for every request, so decisions are instead sampled into
+  a fixed-size ring buffer: an ETS table indexed by an `:atomics` cursor, one
   per instance. `Limen.DecisionLog.Flusher` drains the buffer periodically and
-  emits each entry as a structured `Logger` report. When the buffer wraps
-  faster than it is drained, the oldest entries are overwritten and the
-  flusher logs how many were lost.
+  hands the decisions, in batches, to the instance's sink: by default
+  `Limen.DecisionLog.Logger`, which writes each as a structured `Logger`
+  report, or your own `Limen.DecisionLog.Sink`, to keep them in a database.
+  When the buffer wraps faster than it is drained, the oldest entries are
+  overwritten and the flusher logs how many were lost.
 
   The same buffer backs `recent/2`, which the LiveDashboard page uses to show
   the latest decisions.
@@ -19,7 +21,7 @@ defmodule Limen.DecisionLog do
   use Limen.Boundary,
     type: :strict,
     deps: [Limen.Config, Limen.Decision, Limen.Instance, Limen.IP, Logger],
-    exports: [Flusher]
+    exports: [Flusher, Logger, Sink]
 
   alias Limen.{Decision, Instance}
 

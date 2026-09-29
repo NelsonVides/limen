@@ -136,6 +136,10 @@ background process:
 config :my_app, Limen, decision_log: [sample_rate: 0.01, non_allow_sample_rate: 1.0]
 ```
 
+To keep sampled decisions somewhere else, such as a database table, write a
+`Limen.DecisionLog.Sink`: it gets them in batches, away from the request
+path.
+
 `Limen.decision(conn)` returns the decision for the current request anywhere
 downstream of the plug.
 

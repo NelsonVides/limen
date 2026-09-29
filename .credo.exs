@@ -25,6 +25,8 @@
                excluded: [
                  "lib/limen/owner.ex",
                  "lib/limen/decision_log/flusher.ex",
+                 # The default sink, which only the flusher calls.
+                 "lib/limen/decision_log/logger.ex",
                  "lib/limen/state/rotator.ex",
                  "lib/limen/state/sweeper.ex",
                  "lib/limen/signal/asn/loader.ex",

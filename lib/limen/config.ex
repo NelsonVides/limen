@@ -51,9 +51,11 @@ defmodule Limen.Config do
       * `:non_allow_sample_rate` - fraction of other decisions logged. Defaults
         to `1.0`.
       * `:size` - ring buffer capacity. Defaults to `1024`.
-      * `:flush_interval` - milliseconds between flushes to `Logger`. Defaults
-        to `1000`.
-      * `:level` - `Logger` level. Defaults to `:info`.
+      * `:flush_interval` - milliseconds between flushes to the sink.
+        Defaults to `1000`.
+      * `:sink` - where flushed decisions go: a `Limen.DecisionLog.Sink`
+        module, or `{module, opts}`. Defaults to `Limen.DecisionLog.Logger`,
+        which logs them at its `:level` (`:info` by default).
 
     * `:asn` - IP to ASN data, see `Limen.Signal.Asn`:
       * `:file` - an [iptoasn.com][iptoasn] `ip2asn-combined.tsv` file (optionally
@@ -217,7 +219,7 @@ defmodule Limen.Config do
   [pg]: https://www.erlang.org/doc/apps/kernel/pg.html
   """
 
-  use Limen.Boundary, type: :strict, deps: [Limen.HMAC, Limen.IP, Logger]
+  use Limen.Boundary, type: :strict, deps: [Limen.HMAC, Limen.IP]
 
   alias Limen.Config.Keys
 
@@ -226,7 +228,7 @@ defmodule Limen.Config do
     non_allow_sample_rate: 1.0,
     size: 1024,
     flush_interval: 1_000,
-    level: :info
+    sink: {Limen.DecisionLog.Logger, []}
   }
 
   @state_defaults %{
@@ -578,19 +580,9 @@ defmodule Limen.Config do
   defp validate(:ipv6_prefix, _length, _config), do: {:error, "expected 48, 56 or 64"}
 
   defp validate(:decision_log, opts, _config) when is_list(opts) do
-    merge_known(@decision_log_defaults, opts, fn
-      rate, value when rate in [:sample_rate, :non_allow_sample_rate] ->
-        is_number(value) and value >= 0 and value <= 1
-
-      :size, value ->
-        is_integer(value) and value > 0
-
-      :flush_interval, value ->
-        is_integer(value) and value > 0
-
-      :level, value ->
-        value in Logger.levels()
-    end)
+    with {:ok, log} <- merge_known(@decision_log_defaults, opts, &valid_decision_log?/2) do
+      {:ok, Map.update!(log, :sink, &sink/1)}
+    end
   end
 
   defp validate(:state, opts, _config) when is_list(opts) do
@@ -601,6 +593,19 @@ defmodule Limen.Config do
     do: {:error, "invalid value #{inspect(value)}"}
 
   defp validate(key, _value, _config), do: {:error, "unknown option #{inspect(key)}"}
+
+  defp valid_decision_log?(rate, value) when rate in [:sample_rate, :non_allow_sample_rate],
+    do: is_number(value) and value >= 0 and value <= 1
+
+  defp valid_decision_log?(:sink, {module, opts}), do: sink?(module) and Keyword.keyword?(opts)
+  defp valid_decision_log?(:sink, module), do: sink?(module)
+  defp valid_decision_log?(_size_or_interval, value), do: is_integer(value) and value > 0
+
+  defp sink({_module, _opts} = sink), do: sink
+  defp sink(module), do: {module, []}
+
+  defp sink?(module),
+    do: is_atom(module) and Code.ensure_loaded?(module) and function_exported?(module, :write, 2)
 
   defp valid_fcrdns?(:crawlers, crawlers) do
     is_map(crawlers) and
