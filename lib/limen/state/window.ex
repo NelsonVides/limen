@@ -70,8 +70,8 @@ defmodule Limen.State.Window do
     duration = State.duration(window)
     epoch = div(now, duration)
     slots = slots(instance, window)
-    current = add_row(instance, slots, key, Tuple.to_list(increments), epoch)
-    previous = read_row(slots, key, tuple_size(increments), epoch - 1)
+    current = add_row(instance, slots, key, increments, epoch)
+    previous = read_row(slots, key, tuple_size(increments), epoch - 1, nil)
     slide(current, previous, now, duration)
   end
 
@@ -84,8 +84,9 @@ defmodule Limen.State.Window do
     duration = State.duration(window)
     epoch = div(now, duration)
     slots = slots(instance, window)
-    current = read_row(slots, key, width, epoch)
-    previous = read_row(slots, key, width, epoch - 1)
+    zeros = List.duplicate(0, width)
+    current = read_row(slots, key, width, epoch, zeros)
+    previous = read_row(slots, key, width, epoch - 1, nil)
     slide(current, previous, now, duration)
   end
 
@@ -180,18 +181,20 @@ defmodule Limen.State.Window do
     slot = rem(epoch, State.slots())
     table = elem(slots.tables, slot)
     entry = {key, epoch}
+    width = tuple_size(increments)
     # An increment of zero reads a count without changing it, so the update
     # returns the whole row.
-    ops = Enum.with_index(increments, fn increment, n -> {n + 2, increment} end)
+    ops = for n <- 1..width, do: {n + 1, elem(increments, n - 1)}
 
     if :atomics.get(slots.counts, slot + 1) < max_keys do
-      default = List.to_tuple([entry | Enum.map(increments, fn _increment -> 0 end)])
+      default = :erlang.make_tuple(width + 1, 0, [{1, entry}])
       counts = :ets.update_counter(table, entry, ops, default)
       # A row that existed already held a positive count, so only a new row
       # comes back equal to the increments.
-      if counts == increments, do: :atomics.add(slots.counts, slot + 1, 1)
+      if counts == Tuple.to_list(increments), do: :atomics.add(slots.counts, slot + 1, 1)
       counts
     else
+      increments = Tuple.to_list(increments)
       add_saturated(instance, table, entry, ops, increments, elem(slots.sketches, slot))
     end
   end
@@ -239,11 +242,13 @@ defmodule Limen.State.Window do
     end
   end
 
+  # A row that is not in an exact slot reads as `missing`.
   defp read_row(
          %{tables: tables, counts: counts, sketches: sketches, max_keys: max_keys},
          key,
          width,
-         epoch
+         epoch,
+         missing
        ) do
     slot = rem(epoch, State.slots())
     entry = {key, epoch}
@@ -255,12 +260,15 @@ defmodule Limen.State.Window do
       [] ->
         if :atomics.get(counts, slot + 1) >= max_keys,
           do: estimate_row(elem(sketches, slot), entry, width),
-          else: List.duplicate(0, width)
+          else: missing
     end
   end
 
   defp estimate_row(sketch, entry, width),
     do: for(n <- 1..width, do: CountMin.estimate(sketch, {entry, n}))
+
+  # Nothing to add from a previous row that was not there.
+  defp slide(current, nil, _now, _duration), do: List.to_tuple(current)
 
   defp slide(current, previous, now, duration) do
     current
