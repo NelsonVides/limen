@@ -112,6 +112,10 @@ defmodule Limen.Plug do
   skipped and the request continues. `decision.enforced` tells the two apart.
   Bans created in dry-run mode are never enforced, not even on enforcing
   routes.
+
+  The mode of a request is, from the most specific: its own, set by
+  `Limen.Test.put_mode/2` in tests; the route's `mode:`; the plug's
+  `:mode`; the policy's; the instance's.
   """
 
   @behaviour Plug
@@ -260,7 +264,7 @@ defmodule Limen.Plug do
         {:untrusted, errors} ->
           {decision, ctx} =
             case BanList.lookup(instance, ctx.prefix, ctx.now) do
-              %{action: :maze} = ban -> {Gate.banned(ban, instance.config.mode), ctx}
+              %{action: :maze} = ban -> {Gate.banned(ban, ctx.mode || instance.config.mode), ctx}
               _none_or_denied -> Trap.decide(ctx, trap)
             end
 
@@ -275,7 +279,7 @@ defmodule Limen.Plug do
   defp trust({policy, route_mode, _instance}, ctx, config) do
     case Policy.check_trust(policy, ctx) do
       {:trusted, match} ->
-        mode = route_mode || policy.__limen__(:mode) || config.mode
+        mode = ctx.mode || route_mode || policy.__limen__(:mode) || config.mode
 
         {:trusted,
          %Decision{action: :allow, stage: :trust, mode: mode, policy: policy, matches: [match]}}
@@ -298,7 +302,7 @@ defmodule Limen.Plug do
   defp evaluate(:track, ctx, config) do
     case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do
       nil -> :continue
-      ban -> {Gate.banned(ban, config.mode), ctx}
+      ban -> {Gate.banned(ban, ctx.mode || config.mode), ctx}
     end
   end
 
@@ -308,7 +312,7 @@ defmodule Limen.Plug do
         {decision, ctx}
 
       {:untrusted, errors} ->
-        mode = route_mode || policy.__limen__(:mode) || config.mode
+        mode = ctx.mode || route_mode || policy.__limen__(:mode) || config.mode
 
         {decision, ctx} =
           case BanList.lookup(ctx.instance, ctx.prefix, ctx.now) do

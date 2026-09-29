@@ -125,11 +125,25 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
             {:ok, Limen.Decision.t()} | {:trapped, Limen.Decision.t()}
     def check_form(socket, params, opts) do
       connect_info = socket.private[:limen_connect_info] || connect_info(socket)
-      Limen.Trap.check_form(connect_info, params, with_facts(opts, socket))
+      Limen.Trap.check_form(connect_info, params, with_socket(opts, socket))
     end
 
-    defp with_facts(opts, socket),
-      do: Keyword.put_new(opts, :facts, socket.private[:limen_facts] || %{})
+    # The facts stated for the socket, and in tests, the mode the page's
+    # request was given with `Limen.Test.put_mode/2`.
+    defp with_socket(opts, socket) do
+      opts = Keyword.put_new(opts, :facts, socket.private[:limen_facts] || %{})
+
+      case socket.private[:limen_mode] || test_mode(socket) do
+        nil -> opts
+        mode -> Keyword.put_new(opts, :mode, mode)
+      end
+    end
+
+    # LiveViewTest connects with the page's request as connect info.
+    defp test_mode(%{private: %{connect_info: %Plug.Conn{private: %{limen_mode: mode}}}}),
+      do: mode
+
+    defp test_mode(_socket), do: nil
 
     defp connect_info(socket) do
       %{
@@ -145,10 +159,15 @@ if Code.ensure_loaded?(Phoenix.LiveView) do
 
       connect_params = get_connect_params(socket) || %{}
 
-      case Limen.Socket.check(connect_info, connect_params, with_facts(opts, socket)) do
+      case Limen.Socket.check(connect_info, connect_params, with_socket(opts, socket)) do
         {:ok, _decision} ->
-          socket = put_private(socket, :limen_connect_info, connect_info)
-          {:cont, follow_page(socket)}
+          socket =
+            socket
+            |> put_private(:limen_connect_info, connect_info)
+            |> put_private(:limen_mode, test_mode(socket))
+            |> follow_page()
+
+          {:cont, socket}
 
         {:error, _decision} ->
           {:halt, redirect(socket, to: page_path(socket, params))}

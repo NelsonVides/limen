@@ -168,6 +168,7 @@ charts. It starts in enforce mode; `LIMEN_MODE=dry_run` starts it in dry-run.
 - [Honeypots and the maze](guides/honeypots-and-maze.md)
 - [JA4 behind nginx](guides/nginx-ja4.md)
 - [Tuning](guides/tuning.md)
+- [Testing](guides/testing.md)
 
 ## Verification
 

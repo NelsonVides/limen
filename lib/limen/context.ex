@@ -18,6 +18,10 @@ defmodule Limen.Context do
   a trusted proxy (see `Limen.Signal.ClientIP`); a request from a trusted
   proxy that carried no such header is the proxy's own.
 
+  `mode`, when set, is the request's own mode, overriding every other (see
+  `Limen.Test.put_mode/2`, which sets the `:limen_mode` private connection
+  field); it is `nil` otherwise.
+
   `facts` are what the application knows about the request and Limen
   cannot, such as whether the client is signed in. The application states
   them with `Limen.put_facts/2` before `Limen.Plug` runs (or with
@@ -52,6 +56,7 @@ defmodule Limen.Context do
           headers: [{String.t(), String.t()}],
           now: integer(),
           monotonic: integer(),
+          mode: :dry_run | :enforce | nil,
           facts: %{optional(atom()) => term()},
           signals: %{optional(atom()) => term()},
           evidence: %{optional(atom()) => term()},
@@ -75,6 +80,7 @@ defmodule Limen.Context do
             headers: [],
             now: 0,
             monotonic: 0,
+            mode: nil,
             facts: %{},
             signals: %{},
             evidence: %{},
@@ -87,7 +93,8 @@ defmodule Limen.Context do
   `now` is the system time in milliseconds, used for time windows and token
   expiry; `monotonic` is monotonic time in microseconds, used for limits.
   Tests can pin both with the `:limen_now` and `:limen_monotonic` private
-  connection fields. Facts come from `Limen.put_facts/2`.
+  connection fields, and its mode with `:limen_mode`. Facts come from
+  `Limen.put_facts/2`.
   """
   @spec from_conn(Plug.Conn.t(), Limen.Instance.t() | nil) :: t()
   def from_conn(%Plug.Conn{private: private} = conn, instance \\ nil) do
@@ -101,6 +108,7 @@ defmodule Limen.Context do
       path: conn.request_path,
       query: conn.query_string,
       headers: conn.req_headers,
+      mode: Map.get(private, :limen_mode),
       facts: Map.get(private, :limen_facts, %{}),
       now: Map.get_lazy(private, :limen_now, fn -> System.system_time(:millisecond) end),
       monotonic:

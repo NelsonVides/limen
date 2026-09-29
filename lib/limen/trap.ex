@@ -242,7 +242,7 @@ defmodule Limen.Trap do
     started = System.monotonic_time()
     {ctx, conn} = context(source, opts)
     %Context{instance: %Instance{config: config} = instance} = ctx
-    mode = Keyword.get(opts, :mode) || config.mode
+    mode = Keyword.get(opts, :mode) || ctx.mode || config.mode
     ctx = Signal.identify(ctx, config)
     tells = tells(params || %{}, ctx, config)
 
@@ -371,7 +371,7 @@ defmodule Limen.Trap do
   @spec decide(Context.t(), String.t()) :: {Decision.t(), Context.t()}
   def decide(%Context{instance: instance} = ctx, path) do
     ctx = Signal.collect(ctx, [Fcrdns])
-    mode = instance.config.mode
+    mode = ctx.mode || instance.config.mode
 
     trap = %Match{
       name: :trap,

@@ -388,7 +388,8 @@ config :my_app, Limen,
 ```
 
 `Plug.Test` collects chunked responses, so `conn.resp_body` holds the whole
-maze page.
+maze page. See [Testing](testing.md) for enforcing traps in concurrent
+tests, and for LiveView forms.
 
 [crawl budget]: https://developers.google.com/search/docs/crawling-indexing/large-site-managing-crawl-budget
 [robots.txt]: https://www.rfc-editor.org/rfc/rfc9309

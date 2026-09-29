@@ -100,6 +100,7 @@ defmodule Limen.MixProject do
         "guides/honeypots-and-maze.md",
         "guides/nginx-ja4.md",
         "guides/tuning.md",
+        "guides/testing.md",
         "CHANGELOG.md",
         "LICENSE"
       ],
@@ -182,7 +183,7 @@ defmodule Limen.MixProject do
           Limen.DecisionLog.Flusher,
           Limen.Stats
         ],
-        Utilities: [Limen.IP]
+        Utilities: [Limen.IP, Limen.Test]
       ]
     ]
   end

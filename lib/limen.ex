@@ -75,7 +75,8 @@ defmodule Limen do
         Stats,
         Supervisor,
         Tarpit,
-        Telemetry
+        Telemetry,
+        Test
       ] ++
         if(Code.ensure_loaded?(Phoenix.LiveDashboard.PageBuilder), do: [Dashboard], else: []) ++
         if(Code.ensure_loaded?(Phoenix.LiveView), do: [LiveView], else: [])

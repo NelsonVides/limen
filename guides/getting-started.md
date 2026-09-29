@@ -259,18 +259,13 @@ Instances of the same name on different nodes share their bans. See
   maze: [Honeypots and the maze](honeypots-and-maze.md).
 - Forward JA4 fingerprints from your TLS terminator: [JA4 behind nginx](nginx-ja4.md).
 - Size and tune: [Tuning](tuning.md).
+- Test your application with Limen in front of it: [Testing](testing.md).
 
 ## Testing
 
-Tests can start isolated instances from options, without touching the
-application environment, and run concurrently:
-
-```elixir
-setup do
-  start_supervised!({Limen, name: :my_test, config: [mode: :enforce]})
-  :ok
-end
-```
+Run the instance in dry-run mode in `config/test.exs`, so that tests not
+about Limen never notice it, and enforce it request by request in those
+that are, with `Limen.Test.put_mode/2`. See [Testing](testing.md).
 
 [CIDR]: https://www.rfc-editor.org/rfc/rfc4632
 [X-Forwarded-For]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-For
