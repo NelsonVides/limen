@@ -193,7 +193,7 @@ defmodule Limen.Config do
   [pg]: https://www.erlang.org/doc/apps/kernel/pg.html
   """
 
-  use Boundary, type: :strict, deps: [Limen.IP, Logger]
+  use Boundary, type: :strict, deps: [Limen.HMAC, Limen.IP, Logger]
 
   alias Limen.Config.Keys
 

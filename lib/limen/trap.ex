@@ -211,7 +211,7 @@ defmodule Limen.Trap do
     Base.url_encode64(payload <> mac(key, payload), padding: false)
   end
 
-  defp mac(key, payload), do: binary_part(:crypto.mac(:hmac, :sha256, key, payload), 0, 16)
+  defp mac(key, payload), do: binary_part(Limen.HMAC.sha256(key, payload), 0, 16)
 
   @doc """
   Checks a form submission for the tells of `form_fields/2`.

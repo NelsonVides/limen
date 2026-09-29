@@ -53,26 +53,26 @@ defmodule Limen.Challenge do
   use Boundary,
     type: :strict,
     deps:
-      [Limen.Config, Limen.Context, Limen.Instance, Limen.IP, Limen.Sketch] ++
+      [Limen.Config, Limen.Context, Limen.HMAC, Limen.Instance, Limen.IP, Limen.Sketch] ++
         [EEx, Plug, Plug.Crypto],
     exports: [Assets, Page, Pass, Replay, Token]
 
   alias Limen.{Context, IP}
 
   @doc """
-  The identity a token or pass is bound to.
+  The identity a token or pass is bound to, as the iodata its MAC covers.
   """
-  @spec binding(Context.t()) :: binary()
+  @spec binding(Context.t()) :: iolist()
   def binding(%Context{prefix: prefix, ja4: ja4, user_agent: user_agent}) do
-    IP.prefix_to_binary(prefix) <> <<0>> <> (ja4 || "") <> <<0>> <> (user_agent || "")
+    [IP.prefix_to_binary(prefix), 0, ja4 || "", 0, user_agent || ""]
   end
 
   @doc false
-  @spec mac(binary(), iodata()) :: binary()
-  def mac(key, data), do: binary_part(:crypto.mac(:hmac, :sha256, key, data), 0, 16)
+  @spec mac(Limen.HMAC.key(), iodata()) :: binary()
+  def mac(key, data), do: binary_part(Limen.HMAC.sha256(key, data), 0, 16)
 
   @doc false
-  @spec keys(Limen.Instance.t(), :challenge | :pass | :socket) :: [binary(), ...]
+  @spec keys(Limen.Instance.t(), :challenge | :pass | :socket) :: [Limen.HMAC.key(), ...]
   def keys(%Limen.Instance{config: %{keys: keys}}, purpose), do: Map.fetch!(keys, purpose)
 
   @doc """

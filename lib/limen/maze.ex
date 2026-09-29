@@ -58,7 +58,7 @@ defmodule Limen.Maze do
 
   use Boundary,
     type: :strict,
-    deps: [Limen.Context, Limen.Instance, Limen.Stats, Limen.Telemetry, Plug],
+    deps: [Limen.Context, Limen.HMAC, Limen.Instance, Limen.Stats, Limen.Telemetry, Plug],
     exports: [Bundled, Dice, Model]
 
   alias Limen.{Context, Instance}
@@ -138,7 +138,7 @@ defmodule Limen.Maze do
   # same subject.
   @spec random(Instance.t(), iodata()) :: :rand.state()
   def random(%Instance{config: %{keys: %{maze: [key | _previous]}}}, subject) do
-    <<a::58, b::58, c::58, _rest::bits>> = :crypto.mac(:hmac, :sha256, key, subject)
+    <<a::58, b::58, c::58, _rest::bits>> = Limen.HMAC.sha256(key, subject)
     :rand.seed_s(:exsss, {a, b, c})
   end
 

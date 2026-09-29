@@ -8,7 +8,8 @@ defmodule Limen.Config.Keys do
   current key first, followed by keys derived from `:previous_secret_keys`,
   which are still accepted when verifying so secrets can be rotated without
   invalidating every pass. Maze pages are only ever seeded with the current
-  key.
+  key. Keys are kept padded and masked for HMAC-SHA256, so that computing a
+  MAC is two one-shot hashes.
 
   The struct never shows its contents when inspected.
   """
@@ -16,12 +17,15 @@ defmodule Limen.Config.Keys do
   @enforce_keys [:challenge, :pass, :socket, :trap, :maze, :generated]
   defstruct [:challenge, :pass, :socket, :trap, :maze, :generated]
 
+  @typedoc "A key prepared for HMAC-SHA256: the padded key masked for each hash."
+  @type key :: {binary(), binary()}
+
   @type t :: %__MODULE__{
-          challenge: [binary(), ...],
-          pass: [binary(), ...],
-          socket: [binary(), ...],
-          trap: [binary(), ...],
-          maze: [binary(), ...],
+          challenge: [key(), ...],
+          pass: [key(), ...],
+          socket: [key(), ...],
+          trap: [key(), ...],
+          maze: [key(), ...],
           generated: boolean()
         }
 
@@ -45,7 +49,8 @@ defmodule Limen.Config.Keys do
     }
   end
 
-  defp derive_one(secret, purpose), do: :crypto.mac(:hmac, :sha256, secret, purpose)
+  defp derive_one(secret, purpose),
+    do: Limen.HMAC.prepare(:crypto.mac(:hmac, :sha256, secret, purpose))
 
   defimpl Inspect do
     @spec inspect(Limen.Config.Keys.t(), Inspect.Opts.t()) :: String.t()
