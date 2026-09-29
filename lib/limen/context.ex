@@ -8,6 +8,12 @@ defmodule Limen.Context do
   (`client_ip`, `prefix`, `ja4`, `user_agent`) are always populated; the
   `signals` map is filled by the `Limen.Signal` modules a policy depends on.
 
+  `Limen.Signal.identify/2` reads the identity headers in one pass over the
+  request headers, and with them the ones later stages need: `fetch_dest`
+  (the [`sec-fetch-dest`](https://www.w3.org/TR/fetch-metadata/#sec-fetch-dest-header)
+  header) and `cookie_headers` (the values of the `cookie` headers, in
+  order, unparsed).
+
   Every signal value that ends up in a context is copied into the
   `Limen.Decision` record, so a decision can always be explained from the
   values that produced it.
@@ -25,6 +31,8 @@ defmodule Limen.Context do
           prefix: prefix() | nil,
           ja4: String.t() | nil,
           user_agent: String.t() | nil,
+          fetch_dest: String.t() | nil,
+          cookie_headers: [String.t()],
           method: String.t(),
           scheme: :http | :https,
           host: String.t(),
@@ -45,6 +53,8 @@ defmodule Limen.Context do
             prefix: nil,
             ja4: nil,
             user_agent: nil,
+            fetch_dest: nil,
+            cookie_headers: [],
             method: "GET",
             scheme: :http,
             host: "",

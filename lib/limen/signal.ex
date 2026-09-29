@@ -74,6 +74,11 @@ defmodule Limen.Signal do
   alias Limen.Context
   alias Limen.Signal.{Asn, Behaviour, ClientIP, Fcrdns, HttpShape, JA4}
 
+  # Whether a header name is `literal`. Matching literals in clause heads
+  # starts a binary match, which allocates a match context per header;
+  # comparing sizes first costs as little and allocates nothing.
+  defguardp is_name(name, literal) when byte_size(name) == byte_size(literal) and name === literal
+
   @doc """
   The names of the values this signal stores.
   """
@@ -92,14 +97,61 @@ defmodule Limen.Signal do
 
   @doc """
   Resolves the client identity: address, prefix, JA4 and user agent.
+
+  Also reads the `sec-fetch-dest` and `cookie` headers into the context, in
+  the same pass over the headers.
   """
   @spec identify(Context.t(), Limen.Config.t()) :: Context.t()
-  def identify(%Context{} = ctx, config) do
-    ctx
-    |> ClientIP.resolve(config)
-    |> JA4.resolve(config)
-    |> Map.put(:user_agent, Context.header(ctx, "user-agent"))
+  def identify(%Context{headers: headers, evidence: evidence} = ctx, config) do
+    {forwarded, ja4, user_agent, fetch_dest, cookies} =
+      read(headers, {config.client_ip_header, config.ja4_header}, [], nil, nil, nil, [])
+
+    {client, via_proxy, prefix, source} = ClientIP.client(ctx.peer_ip, config, forwarded)
+    {ja4, evidence} = ja4(JA4.check(ja4, via_proxy), Map.put(evidence, :client_ip, source))
+
+    # One update: each one copies the context.
+    %{
+      ctx
+      | client_ip: client,
+        via_proxy: via_proxy,
+        prefix: prefix,
+        ja4: ja4,
+        user_agent: user_agent,
+        fetch_dest: fetch_dest,
+        cookie_headers: cookies,
+        evidence: evidence
+    }
   end
+
+  defp ja4({:ignored, reason}, evidence), do: {nil, Map.put(evidence, :ja4, reason)}
+  defp ja4(ja4, evidence), do: {ja4, evidence}
+
+  # Each header name is compared once. The first value of a repeated header
+  # wins, as with `Limen.Context.header/2`; the client address header and
+  # cookie headers keep every value, in order.
+  defp read([{name, value} | rest], wanted, forwarded, ja4, nil, dest, cookies)
+       when is_name(name, "user-agent"),
+       do: read(rest, wanted, forwarded, ja4, value, dest, cookies)
+
+  defp read([{name, value} | rest], wanted, forwarded, ja4, ua, nil, cookies)
+       when is_name(name, "sec-fetch-dest"),
+       do: read(rest, wanted, forwarded, ja4, ua, value, cookies)
+
+  defp read([{name, value} | rest], wanted, forwarded, ja4, ua, dest, cookies)
+       when is_name(name, "cookie"),
+       do: read(rest, wanted, forwarded, ja4, ua, dest, [value | cookies])
+
+  defp read([{name, value} | rest], {name, _ja4} = wanted, forwarded, ja4, ua, dest, cookies),
+    do: read(rest, wanted, [value | forwarded], ja4, ua, dest, cookies)
+
+  defp read([{name, value} | rest], {_ip, name} = wanted, forwarded, nil, ua, dest, cookies),
+    do: read(rest, wanted, forwarded, value, ua, dest, cookies)
+
+  defp read([_header | rest], wanted, forwarded, ja4, ua, dest, cookies),
+    do: read(rest, wanted, forwarded, ja4, ua, dest, cookies)
+
+  defp read([], _wanted, forwarded, ja4, ua, dest, cookies),
+    do: {:lists.reverse(forwarded), ja4, ua, dest, :lists.reverse(cookies)}
 
   @doc """
   Runs `signals` in order over the context.

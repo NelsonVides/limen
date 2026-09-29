@@ -37,7 +37,7 @@ defmodule Limen.Challenge.Pass do
   @spec verify(Context.t()) ::
           {:ok, non_neg_integer()} | {:error, :missing | :malformed | :invalid | :expired}
   def verify(%Context{} = ctx) do
-    case cookie(ctx.headers, ctx.instance.config.challenge.cookie) do
+    case cookie(ctx.cookie_headers, ctx.instance.config.challenge.cookie) do
       nil -> {:error, :missing}
       value -> verify(value, ctx)
     end
@@ -88,23 +88,23 @@ defmodule Limen.Challenge.Pass do
   end
 
   @doc """
-  Finds cookie `name` in request headers without parsing every cookie.
+  Finds cookie `name` in the values of `cookie` headers without parsing
+  every cookie.
 
-      iex> Limen.Challenge.Pass.cookie([{"cookie", "a=1; _limen_pass=abc; b=2"}], "_limen_pass")
+      iex> Limen.Challenge.Pass.cookie(["a=1; _limen_pass=abc; b=2"], "_limen_pass")
       "abc"
   """
-  @spec cookie([{String.t(), String.t()}], String.t()) :: String.t() | nil
-  def cookie(headers, name), do: find_header(headers, name <> "=")
+  @spec cookie([String.t()], String.t()) :: String.t() | nil
+  def cookie(cookie_headers, name), do: find_header(cookie_headers, name <> "=")
 
   # HTTP/2 clients may send each cookie in its own header.
-  defp find_header([{"cookie", value} | headers], prefix) do
+  defp find_header([value | cookie_headers], prefix) do
     case find_cookie(:binary.split(value, ";", [:global]), prefix) do
-      nil -> find_header(headers, prefix)
+      nil -> find_header(cookie_headers, prefix)
       cookie -> cookie
     end
   end
 
-  defp find_header([_header | headers], prefix), do: find_header(headers, prefix)
   defp find_header([], _prefix), do: nil
 
   defp find_cookie([], _prefix), do: nil

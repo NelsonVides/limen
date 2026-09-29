@@ -40,16 +40,21 @@ defmodule Limen.Signal.JA4 do
   """
   @spec resolve(Context.t(), Limen.Config.t()) :: Context.t()
   def resolve(%Context{} = ctx, config) do
-    case {Context.header(ctx, config.ja4_header), ctx.via_proxy} do
-      {nil, _via_proxy} -> %{ctx | ja4: nil}
-      {_value, false} -> ignored(ctx, :untrusted_peer)
-      {value, true} -> if valid?(value), do: %{ctx | ja4: value}, else: ignored(ctx, :malformed)
+    case check(Context.header(ctx, config.ja4_header), ctx.via_proxy) do
+      {:ignored, reason} -> %{ctx | ja4: nil, evidence: Map.put(ctx.evidence, :ja4, reason)}
+      ja4 -> %{ctx | ja4: ja4}
     end
   end
 
-  defp ignored(%Context{} = ctx, reason) do
-    %{ctx | ja4: nil, evidence: Map.put(ctx.evidence, :ja4, reason)}
-  end
+  # The fingerprint in the header's value, or why it was ignored. For
+  # `Limen.Signal.identify/2`, which reads the value in its own pass over the
+  # headers and updates the context once.
+  @doc false
+  @spec check(String.t() | nil, boolean()) ::
+          String.t() | nil | {:ignored, :untrusted_peer | :malformed}
+  def check(nil, _via_proxy), do: nil
+  def check(_value, false), do: {:ignored, :untrusted_peer}
+  def check(value, true), do: if(valid?(value), do: value, else: {:ignored, :malformed})
 
   @doc """
   Whether `value` is a well-formed JA4 fingerprint.

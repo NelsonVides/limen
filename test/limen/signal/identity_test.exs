@@ -2,7 +2,7 @@ defmodule Limen.Signal.IdentityTest do
   use Limen.Case, async: true
   use ExUnitProperties
 
-  alias Limen.Context
+  alias Limen.{Context, Signal}
   alias Limen.Signal.{ClientIP, JA4}
 
   doctest Limen.Signal.JA4
@@ -92,5 +92,41 @@ defmodule Limen.Signal.IdentityTest do
              %Context{via_proxy: true, headers: [{"x-tls-fp", ja4}]},
              config(ja4_header: "X-TLS-FP")
            ).ja4 == ja4
+  end
+
+  property "identify reads each header as resolving it on its own would" do
+    ja4 = "t13d1516h2_8daaf6152771_02713d6af862"
+
+    header =
+      one_of([
+        tuple(
+          {member_of(~w(x-forwarded-for forwarded x-real-ip)),
+           member_of(["192.0.2.1", "10.1.1.1, 192.0.2.2", "for=192.0.2.3", "junk"])}
+        ),
+        tuple({constant("x-ja4"), member_of([ja4, "junk"])}),
+        tuple(
+          {member_of(~w(user-agent sec-fetch-dest cookie x-other)),
+           string(:alphanumeric, max_length: 4)}
+        )
+      ])
+
+    check all headers <- list_of(header, max_length: 8),
+              client_ip_header <- member_of([nil, "x-forwarded-for", "forwarded", "x-real-ip"]),
+              peer <- member_of([@proxy, {192, 0, 2, 9}]) do
+      config = config(client_ip_header: client_ip_header)
+      ctx = %Context{peer_ip: peer, client_ip: peer, headers: headers}
+
+      expected =
+        ctx
+        |> ClientIP.resolve(config)
+        |> JA4.resolve(config)
+        |> Map.merge(%{
+          user_agent: Context.header(ctx, "user-agent"),
+          fetch_dest: Context.header(ctx, "sec-fetch-dest"),
+          cookie_headers: for({"cookie", value} <- headers, do: value)
+        })
+
+      assert Signal.identify(ctx, config) == expected
+    end
   end
 end

@@ -144,8 +144,8 @@ Median cost per request on an Apple M4 Pro (see [bench/README.md](bench/README.m
 
 | Path | Median |
 |---|---|
-| Valid pass cookie (fast path) | 4.7 µs |
-| Full evaluation with the default policy and signals | 6.5 µs |
+| Valid pass cookie (fast path) | 4.5 µs |
+| Full evaluation with the default policy and signals | 5.6 µs |
 
 Benchmarks run in CI on every pull request, against the base branch on the
 same runner, and fail the build on a regression over 10%. State is bounded:

@@ -40,36 +40,48 @@ defmodule Limen.Signal.ClientIP do
   """
   @spec resolve(Context.t(), Limen.Config.t()) :: Context.t()
   def resolve(%Context{peer_ip: peer} = ctx, config) do
-    via_proxy = IP.member?(config.trusted_proxies, peer)
-
-    {client, source} =
-      if via_proxy and config.client_ip_header != nil do
-        from_header(ctx, config.client_ip_header, config.trusted_proxies, peer)
-      else
-        {peer, :peer}
-      end
+    name = config.client_ip_header
+    values = for {^name, value} <- ctx.headers, do: value
+    {client, via_proxy, prefix, source} = client(peer, config, values)
 
     %{
       ctx
       | client_ip: client,
         via_proxy: via_proxy,
-        prefix: IP.prefix(client, config.ipv4_prefix, config.ipv6_prefix),
+        prefix: prefix,
         evidence: Map.put(ctx.evidence, :client_ip, source)
     }
   end
 
-  defp from_header(ctx, "x-real-ip" = name, _trusted, peer) do
-    with value when is_binary(value) <- Context.header(ctx, name),
-         {:ok, ip} <- IP.parse(value) do
-      {ip, {:header, name}}
-    else
-      nil -> {peer, :peer}
+  # The client address, whether the peer is a trusted proxy, the prefix and
+  # the evidence, from the values of the client address header in order. For
+  # `Limen.Signal.identify/2`, which reads those values in its own pass over
+  # the headers and updates the context once.
+  @doc false
+  @spec client(:inet.ip_address(), Limen.Config.t(), [String.t()]) ::
+          {:inet.ip_address(), boolean(), Context.prefix(), term()}
+  def client(peer, config, values) do
+    via_proxy = IP.member?(config.trusted_proxies, peer)
+
+    {client, source} =
+      if via_proxy and config.client_ip_header != nil do
+        from_header(values, config.client_ip_header, config.trusted_proxies, peer)
+      else
+        {peer, :peer}
+      end
+
+    {client, via_proxy, IP.prefix(client, config.ipv4_prefix, config.ipv6_prefix), source}
+  end
+
+  defp from_header([value | _later], "x-real-ip" = name, _trusted, peer) do
+    case IP.parse(value) do
+      {:ok, ip} -> {ip, {:header, name}}
       :error -> {peer, {:invalid, name}}
     end
   end
 
-  defp from_header(ctx, name, trusted, peer) do
-    case chain(ctx.headers, name) do
+  defp from_header(values, name, trusted, peer) do
+    case chain(values, name) do
       [] ->
         {peer, :peer}
 
@@ -83,8 +95,8 @@ defmodule Limen.Signal.ClientIP do
 
   # All hops of every header instance, in order. Proxies may add a new header
   # line instead of appending to the existing one.
-  defp chain(headers, name) do
-    for {^name, value} <- headers,
+  defp chain(values, name) do
+    for value <- values,
         hop <- String.split(value, ","),
         hop = String.trim(hop),
         hop != "" do

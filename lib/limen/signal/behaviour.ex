@@ -122,11 +122,12 @@ defmodule Limen.Signal.Behaviour do
   Classifies a request as a `:page` navigation, an `:asset` or `:other`.
 
   Uses [`sec-fetch-dest`](https://www.w3.org/TR/fetch-metadata/#sec-fetch-dest-header)
-  when the client sends it and the path extension otherwise.
+  (read into the context by `Limen.Signal.identify/2`) when the client sends
+  it, and the path extension otherwise.
   """
   @spec kind(Context.t()) :: :page | :asset | :other
   def kind(%Context{} = ctx) do
-    case Context.header(ctx, "sec-fetch-dest") do
+    case ctx.fetch_dest do
       "document" -> :page
       dest when dest in @asset_destinations -> :asset
       nil -> kind_from_path(ctx)

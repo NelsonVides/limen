@@ -129,9 +129,8 @@ defmodule Limen.Challenge.TokenTest do
     end
 
     test "are read from any cookie header" do
-      headers = [{"cookie", "a=1"}, {"cookie", "b=2;  _limen_pass=v1 ; c=3"}]
-      assert Pass.cookie(headers, "_limen_pass") == "v1"
-      assert Pass.cookie([{"cookie", "x_limen_pass=no"}], "_limen_pass") == nil
+      assert Pass.cookie(["a=1", "b=2;  _limen_pass=v1 ; c=3"], "_limen_pass") == "v1"
+      assert Pass.cookie(["x_limen_pass=no"], "_limen_pass") == nil
     end
   end
 
